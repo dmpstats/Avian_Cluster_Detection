@@ -1,4 +1,10 @@
+// cluster
+// appspec.json
+
 {
-    "sdk": "MoveApps R SDK",
-    "year": 2006
-}
+    "clusterstart": "1990-01-01",
+    "clusterend": null,
+    "clusterstep": 1,
+    "clusterwindow": 7,
+    "clustexpiration": 14
+} 

@@ -1,30 +1,51 @@
 {
   "settings": [
     {
-      "id": "sdk",
-      "name": "The name of the MoveApps SDK",
-      "description": "Showcase requesting a string input from the users of your app.",
-      "defaultValue": "MoveApps SDK",
-      "type": "STRING"
+      "id": "clusterstart",
+      "name": "Beginning of period to cluster",
+      "description": "Provide a datetime from which to begin clustering.",
+      "defaultValue": null,
+      "type": "INSTANT"
     },
     {
-      "id": "year",
-      "name": "The year",
-      "description": "Insert description for the year setting setting",
-      "defaultValue": 2022,
+      "id": "clusterend",
+      "name": "End of period to cluster",
+      "description": "Provide a datetime on which to end clustering.",
+      "defaultValue": null,
+      "type": "INSTANT"
+    },
+    {
+      "id": "clusterstep",
+      "name": "Increment between clusterings (days)",
+      "description": "Provide a time increment (number of days) to increase by between each clustering. Default is a 1-day rolling window, though this is computationally demanding for large datasets.",
+      "defaultValue": 1,
       "type": "INTEGER"
     },
     {
-      "id": "yourLocalFileSettingId",
-      "name": "Personalization",
-      "description": "You can personalize the dashboard by providing a file named 'sample.txt'",
-      "type": "LOCAL_FILE"
+      "id": "clusterwindow",
+      "name": "Window of data to be used in clustering",
+      "description": "Provide a time window (number of days). Before clustering any given period, the data will be filtered to a time window of this duration before the clusterdate.",
+      "defaultValue": 7,
+      "type": "INTEGER"
+    },
+    {
+      "id": "clusterexpiration",
+      "name": "Maximum inactive cluster event duration",
+      "description": "Provide a time window (number of days) for the maximum duration of an 'inactive' cluster. That is, if no data is added to this cluster for this duration of time, the cluster will be 'closed' (no further data can be incorporated to this cluster).",
+      "defaultValue": 14,
+      "type": "INTEGER"
     }
   ],
   "dependencies": {
     "R": [
       {
         "name": "lubridate"
+      },
+      {
+        "name": "dplyr"
+      },
+      {
+        "name": "magrittr"
       },
       {
         "name": "move2"
