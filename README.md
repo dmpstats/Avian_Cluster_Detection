@@ -1,4 +1,4 @@
-# Rolling-Window Agglomerative Clustering
+# Avian Cluster Detection
 
 MoveApps
 
@@ -6,11 +6,14 @@ Github repository: *github.com/yourAccount/Name-of-App* *(the link to the reposi
 
 ## Description
 
-This MoveApp geographically clusters behaviourally-classified data over a rolling 2-week window, generating data on the cluster's properties (hours spent, number of revisits, number of animals, and so on).
+This MoveApp geographically clusters behaviourally-classified data over a rolling window, generating data on the cluster's properties (hours spent, number of revisits, number of animals, and so on). Clusters are updated with each time step to simulate real-time identification.
 
 ## Documentation
 
-*Enter here a detailed description of your App. What is it intended to be used for. Which steps of analyses are performed and how. Please be explicit about any detail that is important for use and understanding of the App and its outcomes.*
+Input data to this MoveApp needs to have been processed by
+
+1.  **Basic Data Processing for Merging Studies,** or a similar MoveApp, to append UTM data (i.e. columns named `x` and `y` containing UTM coordinate data)
+2.  **Behavioural Classification for Avian Species,** or an alternative MoveApp, which appends a column of predicted behaviours to each event. Currently, the only supported behaviours are `SFeeding`, `SResting`, `SRoosting` and `STravelling`.
 
 ### Input data
 

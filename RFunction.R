@@ -51,7 +51,9 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
   clusteredTagData <- clusteredData$clustereventdata
   
   # Retrieving clustertable and releasing as artefact
-  clustertable <- clusteredData$clustereventtable
+  clustertable <- clusteredData$clustereventtable %>%
+    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0("A", xy.clust), NA)) %>%
+    mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
   
   # Create path and save
   dir.create(targetDirFiles <- tempdir())

@@ -375,6 +375,9 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
           as.data.frame() %>%
           dplyr::select(x,y)
         if(nrow(nightpts)>0){
+          
+          browser()
+          
           clpts <- datmodsub %>%
             ungroup() %>%
             filter(between(mt_time(.),
@@ -392,6 +395,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
         }else{
           t <- data.frame(xy.clust = i, nightdist_mean = NA, nightdist_median = NA, nightdist_sd = NA)
         }
+        
         tempdat <- bind_rows(tempdat, t) %>%
           as.data.frame() 
         
