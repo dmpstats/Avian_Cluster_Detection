@@ -6,5 +6,6 @@
     "clusterend": null,
     "clusterstep": 1,
     "clusterwindow": 7,
-    "clustexpiration": 14
+    "clustexpiration": 14,
+    "avianBehav": true
 } 

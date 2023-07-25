@@ -34,6 +34,13 @@
       "description": "Provide a time window (number of days) for the maximum duration of an 'inactive' cluster. That is, if no data is added to this cluster for this duration of time, the cluster will be 'closed' (no further data can be incorporated to this cluster).",
       "defaultValue": 14,
       "type": "INTEGER"
+    },
+    {
+      "id": "avianBehav",
+      "name": "Use behavioural classification clustering?",
+      "description": "Select TRUE if this dataset contains a 'behav' column appended by `Behavioural Classification for Avian Species`. If false, the clustering will be performed on all available data.",
+      "defaultValue": true,
+      "type": "CHECKBOX"
     }
   ],
   "dependencies": {
@@ -49,15 +56,21 @@
       },
       {
         "name": "move2"
-      }
+      },
+      {
+        "name": "tidyr"
+      },
+      {
+        "name": "Gmedian"
+      },
+      {
+        "name": "sf"
+      }    
     ]
   },
   "createsArtifacts": true,
   "providedAppFiles": [
-    {
-      "settingId": "yourLocalFileSettingId",
-      "from": "data/local_app_files/provided-app-files/yourLocalFileSettingId/"
-    }
+  
   ],
   "license": {
     "key": "MIT"
@@ -69,34 +82,73 @@
   ],
   "people": [
     {
-      "firstName": "Charles",
-      "middleInitials": null,
-      "lastName": "Darwin",
-      "email": "creator@example.com",
+      "firstName": "Callum",
+      "middleInitials": "J.",
+      "lastName": "Clarke",
+      "email": "cjosephclarke@outlook.com",
       "roles": [
         "author",
         "creator"
       ],
       "orcid": null,
-      "affiliation": null,
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Lindesay",
+      "middleInitials": "",
+      "lastName": "Scott-Hayward",
+      "email": "lass@st-andrews.ac.uk",
+      "roles": [
+        "author",
+        "creator"
+      ],
+      "orcid": "0000-0003-3402-533X",
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Monique",
+      "middleInitials": "",
+      "lastName": "MacKenzie",
+      "email": "monique.mackenzie@st-andrews.ac.uk",
+      "roles": [
+        "author",
+        "creator"
+      ],
+      "orcid": "0000-0002-8505-6585",
+      "affiliation": "University of St Andrews",
+      "affiliationRor": "https://ror.org/02wn5qz54"
+    },
+    {
+      "firstName": "Bruno",
+      "middleInitials": "",
+      "lastName": "Caneco",
+      "email": "bruno@dmpstats.co.uk",
+      "roles": [
+        "author",
+        "creator"
+      ],
+      "orcid": null,
+      "affiliation": "DMP Stats",
       "affiliationRor": null
     }
   ],
   "funding": [
     {
-      "name": "funder name",
-      "comment": "grant for App"
+      "name": "University of St Andrews",
+      "comment": null
     }
   ],
   "references": [
     {
-      "type": "IsDescribedBy",
-      "note": "Darwin, C. 1900. The creation. Journal XY. 1-2",
-      "url": "https://anylink.xyz"
+      "type": null,
+      "note": null,
+      "url": null
     }
   ],
   "documentation": {
-    "url": "https://github.com/yourAccount/my-app/README.md"
+    "url": "https://github.com/callumjclarke/Avian_Cluster_Detection/README.md"
   }
 }
 

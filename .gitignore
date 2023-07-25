@@ -6,3 +6,6 @@
 data/output/**
 !data/output/.keep
 data/raw/workflow.rds
+clustering.R
+makeclustertable.R
+makeEventClusters.R
