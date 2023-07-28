@@ -233,13 +233,13 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     
     # Check data present:
     if(nrow(clusteringData) < 3) {
-      logger.warn(paste0(as.Date(clusterdate), ": Clustering complete - not enough data within clustering period"))
+      logger.warn(paste0(as.Date(clusterdate), ":      Clustering complete - not enough data within clustering period"))
       
       # Find minimum following date on which we have data
       clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
         mt_time() %>%
         min() + days(clusterwindow)
-      logger.warn(paste0("Skipping to next date with data to cluster: ", as.Date(clusterdate)))
+      logger.warn(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))
       next
     }
     
@@ -250,18 +250,18 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
       if(
         sum(clusteringData$behav != 'STravelling') < 2
       ) {
-        logger.warn(paste0(as.Date(clusterdate), ": Not enough non-travelling behaviour for clustering (need >2 tracks). Trying next possible clusterdate"))
+        logger.warn(paste0(as.Date(clusterdate), ":      Not enough non-travelling behaviour for clustering (need >2 tracks). Trying next possible clusterdate"))
         clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
           mt_time() %>%
           min() + days(clusterwindow)
-        logger.warn(paste0("Skipping to clusterdate ", as.Date(clusterdate)))
+        logger.warn(paste0("     Skipping to clusterdate ", as.Date(clusterdate)))
         next
       }
     }
     
     
     # Create new clusters
-    logger.trace(paste0(as.Date(clusterdate), ": Creating new clusters"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Creating new clusters"))
     clusters_new <- makeEventClusters(clusteringData, d = 500, behavsystem)
     
     
@@ -269,11 +269,11 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     
     ## Matching new to old clusters ----------------------------------------------------
     
-    logger.trace(paste0(as.Date(clusterdate), ": Creating matchingclustermap"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Creating matchingclustermap"))
     # Retrieve old clusters
     
     
-    logger.trace(paste0(as.Date(clusterdate), ": Updating tagdata"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Updating tagdata"))
     
     
     
@@ -284,17 +284,17 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
         filter(lastdatetime > clusterdate - days(clustexpiration)) %>%
         dplyr::select(x, y, xy.clust)
       logger.trace(paste0(as.Date(clusterdate), 
-                          ": ", 
+                          ":     ", 
                           nrow(existingclust),
-                          " existing clusters found in filtering period"))
+                          " existing clusters found in cluster-matching period"))
     }
     
     # Retrieve new clusters
     newclust <- clusters_new$clusts 
     logger.trace(paste0(as.Date(clusterdate), 
-                        ": ", 
+                        ":     ", 
                         nrow(newclust),
-                        " clusters generated"))
+                        " new clusters generated"))
     
     if (is.null(existingclust) | nrow(newclust) == 0) {
       matchingclustermap <- data.frame(existID = NULL, updID = NULL)
@@ -327,7 +327,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
         }
       }
       
-      logger.trace(paste0(as.Date(clusterdate), ": ", nrow(matchingclustermap), " clusters matched"))
+      logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(matchingclustermap), "  matched to existing clusters"))
       
       
     }
@@ -338,7 +338,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     
     
     
-    logger.trace(paste0(as.Date(clusterdate), ": Merging with matched clusters"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Merging with matched clusters"))
     if (length(unique(matchingclustermap$updID)) != dim(matchingclustermap)[1]) {
       
       # Find which tags are used more than once
@@ -434,7 +434,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
       # newclustermap <- NULL
     }
     
-    logger.trace(paste0(as.Date(clusterdate), ": Creating updatedclustermap"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Creating updatedclustermap"))
     updatedclustermap <- rbind(matchingclustermap, newclustermap, existclustermap, c(NA, "upNA"))
     colnames(updatedclustermap) <- c("existID", "updID") # fix for 0-cluster situation
     
@@ -496,7 +496,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     
     ## Create cluster table -------------------------------------------------------
     
-    logger.trace(paste0(as.Date(clusterdate), ": Generating clustertable"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Generating clustertable"))
     
     # We don't want to run this if there are no clusters present at this time
     if (nrow(filter(datmodsub, xy.clust %in% updatedClusters$xy.clust)) != 0) {
@@ -517,7 +517,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
       
       
       
-      logger.trace(paste0(as.Date(clusterdate), ": Calculating revisits"))
+      logger.trace(paste0(as.Date(clusterdate), ":     Calculating revisits"))
       cls = updatedClusters$xy.clust
       tempdat = NULL
       for(i in cls){
@@ -555,7 +555,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
       ## Calculate distance to night points ---------------------------------------
       # Select date range plus one day either side of cluster
       
-      logger.trace(paste0(as.Date(clusterdate), ": Calculating distance to night points"))
+      logger.trace(paste0(as.Date(clusterdate), ":     Calculating distance to night points"))
       tempdat = NULL
       for(i in cls){
         nightpts <- datmodsub %>% 
@@ -601,7 +601,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     }
     
     ## Return other clusters to dataset --------------------------------------------------
-    logger.trace(paste0(as.Date(clusterdate), ": Merging back into fullclustertable"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Merging back into fullclustertable"))
     
     if(!is.null(clusterDataDwnld)) {
       fullclustertable <- bind_rows(clustertable_update,
@@ -621,11 +621,11 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     
     
     
-    logger.trace(paste0(as.Date(clusterdate), ": Increasing clusterdate to ", clusterdate + days(clusterstep)))
+    logger.trace(paste0(as.Date(clusterdate), ":     Increasing clusterdate to ", clusterdate + days(clusterstep)))
     # Increase date and repeat
     if(!is.null(fullclustertable)) {clusterDataDwnld <- fullclustertable} else {clusterDataDwnld <- NULL} # ifelse doesn't wor with null statements
     # clusterDataDwnld <- ifelse(!is.null(fullclustertable), fullclustertable, NULL) # return it to move2 here
-    logger.debug(paste0(as.Date(clusterdate), ": COMPLETE. ", nrow(fullclustertable), " total clusters generated"))
+    logger.debug(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(fullclustertable), " cumulative clusters generated"))
     clusterdate <- clusterdate + days(clusterstep)
     
   }
@@ -678,7 +678,7 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
     mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
   
   # Save clustertable as artefact
-  saveRDS(clustertable, file = appArtefactPath("clustertable.rds")) 
+  saveRDS(clustertable, file = appArtifactPath("clustertable.rds")) 
   
   
   # Pass tag data onto next MoveApp
