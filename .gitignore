@@ -9,6 +9,3 @@ data/raw/workflow.rds
 clustering.R
 makeclustertable.R
 makeEventClusters.R
-makeEventClusters.R
-makeclustertable.R
-clustering.R

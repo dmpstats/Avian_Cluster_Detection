@@ -12,7 +12,7 @@ This MoveApp geographically clusters behaviourally-classified data over a rollin
 
 Input data to this MoveApp needs to have been processed by **Standardise Formats and Calculate Basic Statistics,** or a similar MoveApp, to append UTM data (i.e. columns named `x` and `y` containing UTM coordinate data).
 
-If applying this to bird-tracking data, we recommend also using **Behavioural Classification for Vultures,** or an alternative MoveApp, which appends a column of predicted behaviours to each event. Currently, the only supported behaviours are `SFeeding`, `SResting`, `SRoosting` and `STravelling`. This will be incorporated in the clustering (and only stationary behaviours are clustered) - otherwise, all points will be used.
+If applying this to bird-tracking data, we recommend also using **Behavioural Classification for Vultures,** or an alternative MoveApp, which appends a column of predicted behaviours to each event. Currently, the only supported behaviours are `SFeeding`, `SResting`, `SRoosting` and `STravelling`. This wll be incorporated in the clustering (and only stationary behaviours are clustered) - otherwise, all points will be used.
 
 The data is filtered to points in the relevant time window (and, if selected, the relevant behaviours) and an agglomerative clustering process is applied. The rolling window then moves forward by the selected time-step and repeats the process. Any clusters that are geographically (centroids within 200m of one another) and temporally (both have points within the same `Cluster Window` duration) similar are merged into one renamed cluster; similarly, any clusters that have surpassed the given cluster expiration window without any further points being added are 'closed'.
 
