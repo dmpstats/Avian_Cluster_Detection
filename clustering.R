@@ -7,7 +7,7 @@
 # Reworking for MoveApps / sf
 # ~~~~~~~~~~~~~
 
-clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep = 1, clusterwindow = 7, clustexpiration = 14) {
+clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep = 1, clusterwindow = 7, clustexpiration = 14, behavsystem = TRUE) {
   
   
   # Filtering & initial clustering ------------------------------------------------------------
@@ -56,21 +56,23 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     # We need to check the dataset isn't entirely travelling, as there wouldn't
     # be enough points to cluster:
     
-    if(
-      sum(clusteringData$behav != 'STravelling') < 2
-    ) {
-      logger.warn(paste0(as.Date(clusterdate), ": Not enough non-travelling behaviour for clustering (need >2 tracks). Trying next possible clusterdate"))
-      clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
-        mt_time() %>%
-        min() + days(clusterwindow)
-      logger.warn(paste0("Skipping to clusterdate ", as.Date(clusterdate)))
-      next
+    if(behavsystem == TRUE)  {
+      if(
+        sum(clusteringData$behav != 'STravelling') < 2
+      ) {
+        logger.warn(paste0(as.Date(clusterdate), ": Not enough non-travelling behaviour for clustering (need >2 tracks). Trying next possible clusterdate"))
+        clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
+          mt_time() %>%
+          min() + days(clusterwindow)
+        logger.warn(paste0("Skipping to clusterdate ", as.Date(clusterdate)))
+        next
+      }
     }
     
 
     # Create new clusters
     logger.trace(paste0(as.Date(clusterdate), ": Creating new clusters"))
-    clusters_new <- makeEventClusters(clusteringData, d = 500)
+    clusters_new <- makeEventClusters(clusteringData, d = 500, behavsystem)
     
     
 
@@ -310,7 +312,8 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     if (nrow(filter(datmodsub, xy.clust %in% updatedClusters$xy.clust)) != 0) {
       
       clustertable_update <- makeclustertable(filter(datmodsub, xy.clust %in% updatedClusters$xy.clust),
-                                              updatedClusters) #%>% 
+                                              updatedClusters,
+                                              behavsystem) #%>% 
       #      as.data.frame()
     } else {
       clustertable_update <- NULL
@@ -362,7 +365,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
       # Calculate distance to night points ---------------------------------------
       # Select date range plus one day either side of cluster
       
-      logger.trace(paste0(as.Date(clusterdate), ": calculating distance to night points"))
+      logger.trace(paste0(as.Date(clusterdate), ": Calculating distance to night points"))
       tempdat = NULL
       for(i in cls){
         nightpts <- datmodsub %>% 

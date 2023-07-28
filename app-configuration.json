@@ -2,9 +2,10 @@
 // appspec.json
 
 {
-    "clusterstart": "1990-01-01",
+    "clusterstart": null,
     "clusterend": null,
     "clusterstep": 1,
     "clusterwindow": 7,
-    "clustexpiration": 14
+    "clustexpiration": 14,
+    "avianBehav": true
 } 

@@ -7,7 +7,7 @@
 # Reworking for MoveApps / sf
 # ~~~~~~~~~~~~~
 
-makeclustertable <- function(xytagdata, updatedClusters) {
+makeclustertable <- function(xytagdata, updatedClusters, behavsystem = TRUE) {
   
   # Necessary columns
   xytagdata %<>%
@@ -16,18 +16,26 @@ makeclustertable <- function(xytagdata, updatedClusters) {
       datetime = mt_time(.)
     )
   
-  
-  # Calculate proportion of feeding, roosting, and resting points
-  clust <- xytagdata %>%
-    as.data.frame() %>% # need to convert and re-convert for this method
-    group_by(xy.clust) %>%
-    count(behav) %>%
-    arrange(xy.clust) %>%
-    tidyr::pivot_wider(values_from = n, names_from = behav, values_fill = 0)%>%
-    mutate(Total = sum(across(starts_with("S")), na.rm = T),
-           propfeed = ifelse("SFeeding" %in% colnames(.), SFeeding/Total, 0), 
-           proprest = ifelse("SResting" %in% colnames(.), SResting/Total, 0),
-           proproost = ifelse("SRoosting" %in% colnames(.), SRoosting/Total, 0))
+  if(behavsystem == TRUE) {
+    # Calculate proportion of feeding, roosting, and resting points
+    clust <- xytagdata %>%
+      as.data.frame() %>% # need to convert and re-convert for this method
+      group_by(xy.clust) %>%
+      count(behav) %>%
+      arrange(xy.clust) %>%
+      tidyr::pivot_wider(values_from = n, names_from = behav, values_fill = 0)%>%
+      mutate(Total = sum(across(starts_with("S")), na.rm = T),
+             propfeed = ifelse("SFeeding" %in% colnames(.), SFeeding/Total, 0), 
+             proprest = ifelse("SResting" %in% colnames(.), SResting/Total, 0),
+             proproost = ifelse("SRoosting" %in% colnames(.), SRoosting/Total, 0))
+  } else {
+    clust <- xytagdata %>%
+      as.data.frame() %>% # need to convert and re-convert for this method
+      group_by(xy.clust) %>%
+      count(tag) %>%
+      arrange(xy.clust) %>%
+      tidyr::pivot_wider(values_from = n, names_from = tag, values_fill = 0)
+  }
   
   # Calculate number of days, birds, and dates of each cluster
   clust.days <- xytagdata %>%
@@ -44,28 +52,51 @@ makeclustertable <- function(xytagdata, updatedClusters) {
   
   # Calculate stationary time for each cluster (excluding travelling points)
   
-  clust.time <- xytagdata %>%
-    group_by(xy.clust) %>%
-    summarise(TimeTotal = sum(timediff_hrs),
-              TimeDay = sum(timediff_hrs[hour > 5 & hour < 17]),
-              TimeFeed = sum(timediff_hrs[behav == "SFeeding"]),
-              MedianHourFeed = median(hour[behav == "SFeeding"]),
-              MedianHourDay = median(hour[hour > 5 & hour < 17]),
-              DistMedian = median(dist(cbind(x, y))),
-              DistSD = sd(dist(cbind(x, y))),
-              medloc = Gmedian::Weiszfeld(data.frame(x = x, y = y))$median
-              ) %>%
+  if(behavsystem == TRUE) {
+    clust.time <- xytagdata %>%
+      group_by(xy.clust) %>%
+      summarise(TimeTotal = sum(timediff_hrs),
+                TimeDay = sum(timediff_hrs[hour > 5 & hour < 17]),
+                TimeFeed = sum(timediff_hrs[behav == "SFeeding"]),
+                MedianHourFeed = median(hour[behav == "SFeeding"]),
+                MedianHourDay = median(hour[hour > 5 & hour < 17]),
+                DistMedian = median(dist(cbind(x, y))),
+                DistSD = sd(dist(cbind(x, y))),
+                medloc = Gmedian::Weiszfeld(data.frame(x = x, y = y))$median
+      ) %>%
+      
+      mutate(MedianHourFeed = ifelse(is.na(MedianHourFeed), 0, MedianHourFeed),
+             DistSD = ifelse(is.na(DistSD), 0, DistSD),
+             x.med = medloc[, 1],
+             y.med = medloc[, 2]) %>%
+      dplyr::select(-medloc)
     
-    mutate(MedianHourFeed = ifelse(is.na(MedianHourFeed), 0, MedianHourFeed),
-           DistSD = ifelse(is.na(DistSD), 0, DistSD),
-           x.med = medloc[, 1],
-           y.med = medloc[, 2]) %>%
-    dplyr::select(-medloc)
-  
-  clust.table <- left_join(clust.table, clust.time) %>% ungroup() %>%
-    suppressMessages()
-  clust.table <- left_join(clust.table, updatedClusters) %>%
-    suppressMessages()
+    clust.table <- left_join(clust.table, clust.time) %>% ungroup() %>%
+      suppressMessages()
+    clust.table <- left_join(clust.table, updatedClusters) %>%
+      suppressMessages()
+  } else {
+    clust.time <- xytagdata %>%
+      group_by(xy.clust) %>%
+      summarise(TimeTotal = sum(timediff_hrs),
+                TimeDay = sum(timediff_hrs[hour > 5 & hour < 17]),
+                MedianHourDay = median(hour[hour > 5 & hour < 17]),
+                DistMedian = median(dist(cbind(x, y))),
+                DistSD = sd(dist(cbind(x, y))),
+                medloc = Gmedian::Weiszfeld(data.frame(x = x, y = y))$median
+      ) %>%
+      
+      mutate(DistSD = ifelse(is.na(DistSD), 0, DistSD),
+             x.med = medloc[, 1],
+             y.med = medloc[, 2]) %>%
+      dplyr::select(-medloc)
+    
+    clust.table <- left_join(clust.table, clust.time) %>% ungroup() %>%
+      suppressMessages()
+    clust.table <- left_join(clust.table, updatedClusters) %>%
+      suppressMessages()
+  }
+
   
   
   # # Return to move2 object

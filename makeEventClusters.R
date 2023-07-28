@@ -14,13 +14,15 @@ library(move2)
 `%!in%` <- Negate(`%in%`)
 
 
-makeEventClusters <- function(data, d = 500) {
+makeEventClusters <- function(data, d = 500, behavsystem = TRUE) {
   
   # Get animal IDs
   tags <- unique(mt_track_id(data))
 
-  # Filter all tags to non-travelling behaviour 
-  tagdat <- filter(data, behav %!in% c("STravelling", "Unknown"))
+  if(behavsystem == TRUE) {
+    # Filter all tags to non-travelling behaviour 
+    tagdat <- filter(data, behav %!in% c("STravelling", "Unknown"))
+  } else {tagdat <- data}
   
   
   # Perform clustering on UTM coordinate data
