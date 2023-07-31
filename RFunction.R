@@ -15,6 +15,8 @@ makeEventClusters <- function(data, d = 500, behavsystem = TRUE) {
   
   ## Setup -------------------------------------------------------------------
   
+
+  
   # Get animal IDs
   tags <- unique(mt_track_id(data))
   
@@ -48,7 +50,8 @@ makeEventClusters <- function(data, d = 500, behavsystem = TRUE) {
   #browser()
   
   for (i in 1:max(xy$clust)){
-    # gCentroid from the rgeos package
+    
+    # Get centroid
     multi <- subset(xy, clust == i) %>%
       sf::st_coordinates() %>%
       sf::st_multipoint()
@@ -640,12 +643,15 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
 
 # MoveApps RFunction -----------------------------------------------------------------------
 
-rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwindow = 7, clustexpiration = 14, avianBehav = TRUE) {
+rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwindow = 7, clustexpiration = 14, avianBehav = TRUE,  clustercode = "") {
   
-  # Issues with the 'between' function within this MoveApp
-  # Doesn't seem to recognise the POSIX as desired
-  # Why?
-  
+  # Check clustercode
+  if (clustercode != "") {
+    logger.trace(paste0("Provided clustercode is ", clustercode))
+  } else {
+    logger.warn("No clustercode provided. Defaulting to clustercode of 'A'. ")
+    clustercode <- "A"
+  }
   
   # Check suitability of inputs
   if(!is.instant(as.Date(clusterstart)) | is.null(clusterstart)) {
@@ -672,10 +678,13 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
   # Retrieve tagdata output
   clusteredTagData <- clusteredData$clustereventdata
   
-  # Retrieving clustertable and releasing as artefact
+  # Retrieving clustertable and releasing as artefact, updating geometry to MEDIAN location
   clustertable <- clusteredData$clustereventtable %>%
-    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0("A", xy.clust), NA)) %>%
+    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, ".", xy.clust), NA)) %>%
+    sf::st_drop_geometry() %>%
+    sf::st_as_sf(coords = c("x.med", "y.med"), crs = sf::st_crs(data)) %>%
     mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
+  
   
   # Save clustertable as artefact
   saveRDS(clustertable, file = appArtifactPath("clustertable.rds")) 

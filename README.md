@@ -26,6 +26,8 @@ To use this process with no rolling window (i.e. perform a single clustering ste
 
 -   Set the **cluster window** to a number of days longer than the duration of your dataset (in days)
 
+Please note: the geometry of the outputted clusters is determined by their **median location,** not mean location. This is generated using the GMedian `Weiszfeld` function.
+
 ### Input data
 
 *Move2* Location Data

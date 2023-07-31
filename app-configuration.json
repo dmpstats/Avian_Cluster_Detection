@@ -2,10 +2,11 @@
 // appspec.json
 
 {
-    "clusterstart": null,
-    "clusterend": null,
+    "clusterstart": "2023-01-01 00:00:00 UTC",
+    "clusterend": "2023-06-01 00:00:00 UTC",
     "clusterstep": 1,
     "clusterwindow": 7,
     "clustexpiration": 14,
-    "avianBehav": true
+    "avianBehav": true,
+    "clustercode": "SV1"
 } 
