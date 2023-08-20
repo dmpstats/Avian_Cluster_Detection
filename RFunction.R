@@ -572,8 +572,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
           dplyr::select(x,y)
         if(nrow(nightpts)>0){
           
-          browser()
-          
+
           clpts <- datmodsub %>%
             ungroup() %>%
             filter(between(mt_time(.),
