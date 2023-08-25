@@ -342,6 +342,8 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
     
     
     logger.trace(paste0(as.Date(clusterdate), ":     Merging with matched clusters"))
+    
+    
     if (length(unique(matchingclustermap$updID)) != dim(matchingclustermap)[1]) {
       
       # Find which tags are used more than once
@@ -367,10 +369,38 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
           allocpoints$xy.clust[d] <- tempdat$updID[cid]
         }
         
+        
+        
         matchingclustermap <- filter(matchingclustermap, updID != names(ids)[u]) %>%
           bind_rows(., tempdat)
-        clusters_new$tagdata <- filter(clusters_new$tagdata, xy.clust %!in% names(ids)[u]) %>%
-          mt_stack(., allocpoints, .track_combine = "merge", .track_id_repair = "unique") # error here
+        
+        
+        temp <- filter(clusters_new$tagdata, xy.clust %!in% names(ids)[u])
+        
+        if (date(clusterdate) == as.Date("2022-10-12")) {browser()}
+        
+        tryCatch(
+          {
+            clusters_new$tagdata <- mt_stack(temp, allocpoints, .track_combine = "merge", .track_id_repair = "unique")
+            },
+          
+          # This bypasses bug in which mt_stack thinks that allocpoints and temp have different crs codes
+          # by converting to dataframe, binding, and returning to move2, whilst storing track attributes
+          error = function(e) {
+            logger.warn(
+              paste0(as.Date(clusterdate), ":     TRYCATCH ERROR: mt_stack error returning crs code error")
+            )
+            trackcol <- mt_track_id_column(temp)
+            timecol <- mt_time_column(temp)
+            trackattributes <- colnames(mt_track_data(temp))
+            trackDat <- rbind(as.data.frame(temp), as.data.frame(allocpoints)) %>% st_as_sf(crs = st_crs(temp))
+            clusters_new$tagdata <- mt_as_move2(trackDat, track_id_column = trackcol, time_column = timecol, track_attributes = trackattributes)
+          } 
+        )
+        
+        # PROBLEM LINE:
+#        clusters_new$tagdata <- filter(clusters_new$tagdata, xy.clust %!in% names(ids)[u]) %>%
+#          mt_stack(., allocpoints, .track_combine = "merge", .track_id_repair = "unique") # error here
         #  bind_rows(., allocpoints) # error here
         newclust <- filter(newclust, xy.clust != names(ids)[u])
         
@@ -396,10 +426,34 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
         
         newclust <- filter(newclust, xy.clust %!in% tempdat$updID)
         
-        allocpoints <- allocpoints %>% mutate(xy.clust = newname[1])
-        clusters_new$tagdata <- filter(clusters_new$tagdata, xy.clust %!in% tempdat$updID) %>%
-          mt_stack(., allocpoints, .track_combine = "merge") 
+        # Problem line
+        #allocpoints <- allocpoints %>% mutate(xy.clust = newname[1])
+        #clusters_new$tagdata <- filter(clusters_new$tagdata, xy.clust %!in% tempdat$updID) %>%
+         # mt_stack(., allocpoints, .track_combine = "merge")
         
+        allocpoints <- allocpoints %>% mutate(xy.clust = newname[1])
+        temp <- filter(clusters_new$tagdata, xy.clust %!in% tempdat$updID)
+   
+        tryCatch(
+          {
+            clusters_new$tagdata <- mt_stack(temp, allocpoints, .track_combine = "merge")
+          },
+          
+          # This bypasses bug in which mt_stack thinks that allocpoints and temp have different crs codes
+          # by converting to dataframe, binding, and returning to move2, whilst storing track attributes
+          error = function(e) {
+            logger.warn(
+              paste0(as.Date(clusterdate), ":     TRYCATCH ERROR: mt_stack error returning crs code error")
+            )
+            trackcol <- mt_track_id_column(temp)
+            timecol <- mt_time_column(temp)
+            trackattributes <- colnames(mt_track_data(temp))
+            trackDat <- rbind(as.data.frame(temp), as.data.frame(allocpoints)) %>% st_as_sf(crs = st_crs(temp))
+            clusters_new$tagdata <- mt_as_move2(trackDat, track_id_column = trackcol, time_column = timecol, track_attributes = trackattributes)
+          } 
+        )
+        
+             
         tempdat$updID <- newname
         matchingclustermap <- filter(matchingclustermap, existID != names(ids)[u]) %>%
           bind_rows(., tempdat %>% slice(1))
