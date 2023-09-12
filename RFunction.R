@@ -701,7 +701,7 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
   # Check clustercode
   if (clustercode != "") {
     logger.trace(paste0("Provided clustercode is ", clustercode))
-    clustercode <- paste0(clusercode, ".")
+    clustercode <- paste0(clustercode, ".")
   } else {
     logger.warn("No clustercode provided. Defaulting no clustercode. ")
     clustercode <- ""
