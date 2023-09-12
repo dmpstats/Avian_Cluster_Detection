@@ -701,9 +701,10 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
   # Check clustercode
   if (clustercode != "") {
     logger.trace(paste0("Provided clustercode is ", clustercode))
+    clustercode <- paste0(clusercode, ".")
   } else {
-    logger.warn("No clustercode provided. Defaulting to clustercode of 'A'. ")
-    clustercode <- "A"
+    logger.warn("No clustercode provided. Defaulting no clustercode. ")
+    clustercode <- ""
   }
   
   # Check suitability of inputs
@@ -729,11 +730,12 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
   clusteredData <- clustering(data, as.Date(clusterstart), as.Date(clusterend), clusterstep, clusterwindow, clustexpiration, behavsystem = avianBehav)
   
   # Retrieve tagdata output
-  clusteredTagData <- clusteredData$clustereventdata
+  clusteredTagData <- clusteredData$clustereventdata %>%
+    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
   
   # Retrieving clustertable and releasing as artefact, updating geometry to MEDIAN location
   clustertable <- clusteredData$clustereventtable %>%
-    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, ".", xy.clust), NA)) %>%
+    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)) %>%
     sf::st_drop_geometry() %>%
     sf::st_as_sf(coords = c("x.med", "y.med"), crs = sf::st_crs(data)) %>%
     mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
