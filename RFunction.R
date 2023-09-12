@@ -377,8 +377,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
         
         temp <- filter(clusters_new$tagdata, xy.clust %!in% names(ids)[u])
         
-        if (date(clusterdate) == as.Date("2022-10-12")) {browser()}
-        
+
         tryCatch(
           {
             clusters_new$tagdata <- mt_stack(temp, allocpoints, .track_combine = "merge", .track_id_repair = "unique")
