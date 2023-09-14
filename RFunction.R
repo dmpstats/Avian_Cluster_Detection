@@ -284,7 +284,7 @@ clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep 
       existingclust <- NULL # no previous clusters
     } else {
       existingclust <- clusterDataDwnld %>%
-        filter(lastdatetime > clusterdate - days(clustexpiration)) %>%
+        filter(lastdatetime > clusterdate - days(clustexpiration) - days(clusterwindow)) %>%
         dplyr::select(x, y, xy.clust)
       logger.trace(paste0(as.Date(clusterdate), 
                           ":     ", 
