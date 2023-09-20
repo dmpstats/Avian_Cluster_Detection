@@ -2,11 +2,11 @@
 // appspec.json
 
 {
-    "clusterstart": "2015-09-15 04:00:00 UTC",
+    "clusterstart": "2023-01-01 00:00:00 UTC",
     "clusterend": "2023-08-23 16:26:50 UTC",
     "clusterstep": 10,
     "clusterwindow": 14,
     "clustexpiration": 14,
     "avianBehav": true,
-    "clustercode": ""
+    "clustercode": "NCZ"
 } 

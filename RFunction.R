@@ -739,6 +739,14 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
     sf::st_as_sf(coords = c("x.med", "y.med"), crs = sf::st_crs(data)) %>%
     mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
   
+  # Fix to remove 'outdated' clusters:
+  logger.info(paste0("Removing clusters that have since been overwritten in the tagdata: ", 
+                     toString(
+                       clustertable$xy.clust[which(clustertable$xy.clust %!in% clusteredTagData$xy.clust)]
+                     )))
+  clustertable %<>% filter(
+    xy.clust %in% clusteredTagData$xy.clust
+  )
   
   # Save clustertable as artefact
   saveRDS(clustertable, file = appArtifactPath("clustertable.rds")) 
