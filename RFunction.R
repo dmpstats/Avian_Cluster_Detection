@@ -179,12 +179,12 @@ rFunction <- function(data,
     # Create output table:
     clusts %<>% 
       mutate(xy.clust = paste0("up", clust)) %>%
-      select(-clust)
+      dplyr::select(-clust)
     
     # Output location data:
     xydata <- clusterpoints %>% ungroup() %>%
       mutate(xy.clust = paste0("up", clust)) %>%
-      select(-clust) %>%
+      dplyr::select(-clust) %>%
       
       # Remove the non-significant clusters:
       mutate(xy.clust = if_else(xy.clust %in% unique(clusts$xy.clust), xy.clust, "upNA"))
@@ -513,7 +513,9 @@ rFunction <- function(data,
               within_50k = NA,
               nightdist_mean = NA, 
               nightdist_med = NA, 
-              nightdist_sd = NA) 
+              nightdist_sd = NA,
+              arrivaldist_mean = NA,
+              arrivaldist_med = NA) 
 
   rm(list = c("clusterDataDwnld", "clusteringData", "clusterpoints", "eventdata", "genclustertable", "xydata", "xytagdata", "mdist")) # clear some storage for next operations
   clustertable %<>% mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust") # switch to move2 for ease
@@ -630,7 +632,7 @@ rFunction <- function(data,
         between(mt_time(.),
           clustdat$firstdatetime - days(1),
           clustdat$lastdatetime),
-        mt_track_id(.) %in% strsplit(clustdat$birds, split = ", ") %>% unlist())
+        mt_track_id(.) %in% (strsplit(clustdat$birds, split = ", ") %>% unlist()))
     atevent <- clustpoints %>% # select only cluster points
       filter(xy.clust == clustertable$xy.clust[k])
     
@@ -654,11 +656,48 @@ rFunction <- function(data,
       nightdists <- st_distance(
         nightdat[nightdat$day == 1,],
         nightdat[nightdat$day == 0,]
-      )
+      ) %>% units::drop_units()
       clustertable$nightdist_mean[k] <- mean(nightdists)
       clustertable$nightdist_med[k] <- median(nightdists)
       clustertable$nightdist_sd[k] <- sd(nightdists)
     }
+    
+    # Generate night-before distance data --------------------------
+    
+    # Identify each ID's first date of arrival
+    firstarrivals <- daysbybird %>%
+      as.data.frame() %>%
+      group_by(Var2) %>%
+      slice_min(order_by = Var2) %>%
+      ungroup()
+    
+    for (m in nrow(firstarrivals)) {
+      nightdat <- clustpoints %>%
+        filter(
+          # Case 1: Day before arrival, late at night
+          (date(mt_time(.)) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
+               (hour(mt_time(.)) > 21) &
+               (mt_track_id(.) == firstarrivals$Var1[m]) |
+            # Case 2: day of arrival, early morning
+          (date(mt_time(.)) == as_date(toString(firstarrivals$Var2[m]))) &
+           (hour(mt_time(.)) < 5) &
+           (mt_track_id(.) == firstarrivals$Var1[m])
+          )
+      
+      arrivaldists <- st_distance(nightdat, clustdat)
+      clustertable$arrivaldist_mean[k] <- mean(arrivaldists, na.rm = T)
+      clustertable$arrivaldist_med[k] <- median(arrivaldists, na.rm = T)
+      
+    }
+    
+    nightbefore <- clustpoints %>%
+      filter(between(mt_time(.),
+                     clustdat$firstdatetime - days(1),
+                     clustdat$lastdatetime
+                     ))
+    
+    
+    
 
   }
 
