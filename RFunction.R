@@ -5,698 +5,34 @@ library('magrittr')
 library('tidyr')
 library('Gmedian')
 library('sf')
+library('stringr')
+library('units')
 
+# Shortened 'not in':
 `%!in%` <- Negate(`%in%`)
 
-
-# makeEventClusters function -------------------------------------------------
-
-makeEventClusters <- function(data, d = 500, behavsystem = TRUE) {
-  
-  ## Setup -------------------------------------------------------------------
-  
-
-  
-  # Get animal IDs
-  tags <- unique(mt_track_id(data))
-  
-  if(behavsystem == TRUE) {
-    # Filter all tags to non-travelling behaviour 
-    tagdat <- filter(data, behav %!in% c("STravelling", "Unknown"))
-  } else {tagdat <- data}
-  
-  
-  ## Generate clusters -------------------------------------------------------
-  
-  # Perform clustering on UTM coordinate data
-  xy <- tagdat[, c("x", "y")] %>%
-    #sf::st_as_sf(coords = c("x", "y"), crs = "+init=epsg:32733") %>%
-    cbind(ID = seq(1:nrow(tagdat))) # Append ID
-  
-  mdist <- dist(cbind(tagdat$x, tagdat$y))
-  hc <- hclust(as.dist(mdist), method = "complete")
-  
-  xy$clust <- cutree(hc, h=d)
-  
-  
-  ## Generate cluster centroids ---------------------------------------------
-  
-  # find id of clusters with only 1 point and which rows in tag data
-  cid <- as.vector(which(table(xy$clust)==1))
-  rid <- which(xy$clust %in% cid == TRUE)
-  
-  # find the centroids of clusters
-  cent <- matrix(ncol=2, nrow=max(xy$clust))
-  #browser()
-  
-  for (i in 1:max(xy$clust)){
-    
-    # Get centroid
-    multi <- subset(xy, clust == i) %>%
-      sf::st_coordinates() %>%
-      sf::st_multipoint()
-    cent[i,] <- sf::st_centroid(multi)
-  }
-  
-  
-  ## Create output table ----------------------------------------------------
-  
-  clusts <- as_tibble(cent) %>% 
-    mutate(xy.clust = row_number()) %>%
-    filter(xy.clust %!in% cid) %>%
-    mutate(xy.clust = paste0("up", xy.clust)) %>%
-    rename(x=V1, y=V2)
-  
-  xydata <- tagdat %>% ungroup () %>%
-    mutate(xy.clust = xy$clust) %>%
-    mutate(xy.clust = paste0("up", xy.clust)) %>%
-    mutate(xy.clust = if_else(xy.clust %in% unique(clusts$xy.clust), xy.clust, "upNA"))
-  
-  
-  return(list(tagdata = xydata, clusts = clusts))
-  
-  
+# Function to calculate geometric medians:
+calcGMedianSF <- function(data) {
+  med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
+    rename(x = V1, y = V2) %>%
+    st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
+    st_geometry()
+  return(med)
 }
 
+rFunction <- function(data,
+                      clusterstart,
+                      clusterend,
+                      clusterstep = 1, 
+                      clusterwindow = 7, 
+                      clustexpiration = 14, 
+                      behavsystem = TRUE, 
+                      d,
+                      clustercode = "") {
+  
+  # --------------------------------------------------------------
+  # Setup & Input Checks -----------------------------------------
 
-
-
-# makeclustertable function ----------------------------------------------------------------
-
-makeclustertable <- function(xytagdata, updatedClusters, behavsystem = TRUE) {
-  
-  ## Generate specific columns ---------------------------------------------------
-  
-  # Necessary columns
-  xytagdata %<>%
-    mutate(
-      tag = mt_track_id(.),
-      datetime = mt_time(.)
-    )
-  
-  
-  ## Use behavioural classification ----------------------------------------------
-  
-  if(behavsystem == TRUE) {
-    # Calculate proportion of feeding, roosting, and resting points
-    clust <- xytagdata %>%
-      as.data.frame() %>% # need to convert and re-convert for this method
-      group_by(xy.clust) %>%
-      count(behav) %>%
-      arrange(xy.clust) %>%
-      tidyr::pivot_wider(values_from = n, names_from = behav, values_fill = 0)%>%
-      mutate(Total = sum(across(starts_with("S")), na.rm = T),
-             propfeed = ifelse("SFeeding" %in% colnames(.), SFeeding/Total, 0), 
-             proprest = ifelse("SResting" %in% colnames(.), SResting/Total, 0),
-             proproost = ifelse("SRoosting" %in% colnames(.), SRoosting/Total, 0))
-  } else {
-    clust <- xytagdata %>%
-      as.data.frame() %>% # need to convert and re-convert for this method
-      group_by(xy.clust) %>%
-      count(tag) %>%
-      arrange(xy.clust) %>%
-      tidyr::pivot_wider(values_from = n, names_from = tag, values_fill = 0)
-  }
-  
-  
-  ## Generate data on each cluster --------------------------------------------------
-  
-  # Calculate number of days, birds, and dates of each cluster
-  clust.days <- xytagdata %>%
-    group_by(xy.clust) %>%
-    summarise(days = length(unique(date(datetime))),
-              nbirds = length(unique(tag)),
-              birds = paste(unique(tag), collapse = ", "),
-              firstdatetime = min(datetime),
-              lastdatetime = max(datetime)
-    )
-  
-  clust.table <- left_join(clust, clust.days) %>%
-    suppressMessages()
-  
-  # Calculate stationary time for each cluster (excluding travelling points)
-  
-  if(behavsystem == TRUE) {
-    clust.time <- xytagdata %>%
-      group_by(xy.clust) %>%
-      summarise(TimeTotal = sum(timediff_hrs),
-                TimeDay = sum(timediff_hrs[hour > 5 & hour < 17]),
-                TimeFeed = sum(timediff_hrs[behav == "SFeeding"]),
-                MedianHourFeed = median(hour[behav == "SFeeding"]),
-                MedianHourDay = median(hour[hour > 5 & hour < 17]),
-                DistMedian = median(dist(cbind(x, y))),
-                DistSD = sd(dist(cbind(x, y))),
-                medloc = Gmedian::Weiszfeld(data.frame(x = x, y = y))$median
-      ) %>%
-      
-      mutate(MedianHourFeed = ifelse(is.na(MedianHourFeed), 0, MedianHourFeed),
-             DistSD = ifelse(is.na(DistSD), 0, DistSD),
-             x.med = medloc[, 1],
-             y.med = medloc[, 2]) %>%
-      dplyr::select(-medloc)
-    
-    clust.table <- left_join(clust.table, clust.time) %>% ungroup() %>%
-      suppressMessages()
-    clust.table <- left_join(clust.table, updatedClusters) %>%
-      suppressMessages()
-  } else {
-    clust.time <- xytagdata %>%
-      group_by(xy.clust) %>%
-      summarise(TimeTotal = sum(timediff_hrs),
-                TimeDay = sum(timediff_hrs[hour > 5 & hour < 17]),
-                MedianHourDay = median(hour[hour > 5 & hour < 17]),
-                DistMedian = median(dist(cbind(x, y))),
-                DistSD = sd(dist(cbind(x, y))),
-                medloc = Gmedian::Weiszfeld(data.frame(x = x, y = y))$median
-      ) %>%
-      
-      mutate(DistSD = ifelse(is.na(DistSD), 0, DistSD),
-             x.med = medloc[, 1],
-             y.med = medloc[, 2]) %>%
-      dplyr::select(-medloc)
-    
-    clust.table <- left_join(clust.table, clust.time) %>% ungroup() %>%
-      suppressMessages()
-    clust.table <- left_join(clust.table, updatedClusters) %>%
-      suppressMessages()
-  }
-  
-  # # Return to move2 object
-  # clust.table <- move2::mt_as_move2(
-  #   clust.table,
-  #   coords = c("x", "y"),
-  #   time_column = "firstdatetime",
-  #   track_id_column = "xy.clust"
-  # )
-  
-  # CC: Should we transform to lat/lon? I've used UTMs as standard output so far - leaving it this way for now
-  
-  
-  return(clust.table)
-  
-}
-
-
-
-
-# rolling-window clustering function --------------------------------------------------------
-clustering <- function(datmodsub, clusterstartdate, clusterenddate, clusterstep = 1, clusterwindow = 7, clustexpiration = 14, behavsystem = TRUE) {
-  
-  
-  ## Filtering & initial clustering ------------------------------------------------------------
-  
-  
-  # We initially have no previous cluster data
-  clusterDataDwnld <- NULL
-  fullclustertable <- NULL
-  
-  # Filter to data being clustered
-  eventdata <- datmodsub %>%
-    ungroup() %>%
-    filter(between(mt_time(datmodsub), clusterstartdate - days(clusterwindow), clusterenddate + days(1)))
-  
-  
-  # Set initial day to cluster:
-  clusterdate <- ceiling_date(clusterstartdate, unit = "days")
-  
-  
-  # Loop over the days within our clustering period:
-  while(clusterdate <= ceiling_date(clusterenddate, unit = "days")) {
-    
-    # Unless we're on the first step, download cluster data
-    if(!is.null(clusterDataDwnld)) {
-      clusterDataDwnld <- fullclustertable
-    }
-    
-    logger.debug(paste0(as.Date(clusterdate), ": Beginning clustering"))
-    
-    # Sample to relevant 7 days
-    clusteringData <- eventdata %>%
-      filter(between(mt_time(eventdata), clusterdate - days(clusterwindow), clusterdate))
-    
-    # Check data present:
-    if(nrow(clusteringData) < 3) {
-      logger.warn(paste0(as.Date(clusterdate), ":      Clustering complete - not enough data within clustering period"))
-      
-      # Find minimum following date on which we have data
-      clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
-        mt_time() %>%
-        min() + days(clusterwindow)
-      logger.warn(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))
-      next
-    }
-    
-    # We need to check the dataset isn't entirely travelling, as there wouldn't
-    # be enough points to cluster:
-    
-    if(behavsystem == TRUE)  {
-      if(
-        sum(clusteringData$behav != 'STravelling') < 2
-      ) {
-        logger.warn(paste0(as.Date(clusterdate), ":      Not enough non-travelling behaviour for clustering (need >2 tracks). Trying next possible clusterdate"))
-        clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
-          mt_time() %>%
-          min() + days(clusterwindow)
-        logger.warn(paste0("     Skipping to clusterdate ", as.Date(clusterdate)))
-        next
-      }
-    }
-    
-    
-    # Create new clusters
-    logger.trace(paste0(as.Date(clusterdate), ":     Creating new clusters"))
-    clusters_new <- makeEventClusters(clusteringData, d = 500, behavsystem)
-    
-    
-    
-    
-    ## Matching new to old clusters ----------------------------------------------------
-    
-    logger.trace(paste0(as.Date(clusterdate), ":     Creating matchingclustermap"))
-    # Retrieve old clusters
-    
-    
-    logger.trace(paste0(as.Date(clusterdate), ":     Updating tagdata"))
-    
-    
-    
-    if (is.null(clusterDataDwnld)) {
-      existingclust <- NULL # no previous clusters
-    } else {
-      existingclust <- clusterDataDwnld %>%
-        filter(lastdatetime > clusterdate - days(clustexpiration) - days(clusterwindow)) %>%
-        dplyr::select(x, y, xy.clust)
-      logger.trace(paste0(as.Date(clusterdate), 
-                          ":     ", 
-                          nrow(existingclust),
-                          " existing clusters found in cluster-matching period"))
-    }
-    
-    # Retrieve new clusters
-    newclust <- clusters_new$clusts 
-    logger.trace(paste0(as.Date(clusterdate), 
-                        ":     ", 
-                        nrow(newclust),
-                        " new clusters generated"))
-    
-    if (is.null(existingclust) | nrow(newclust) == 0) {
-      matchingclustermap <- data.frame(existID = NULL, updID = NULL)
-    } else {
-      
-      
-      # find distances between existing and new clusters
-      clustdist <- as.matrix(dist(rbind(existingclust[,1:2], newclust[,1:2]))) # x and y are utms
-      diag(clustdist) <- NA
-      # rows are existing clusters, columns are new clusters
-      clustdist <- as.matrix(clustdist[1:nrow(existingclust), (nrow(existingclust)+1): (nrow(existingclust) + nrow(newclust))])
-      
-      #find near ones (200m), i.e. new clusters that match with an exsiting one. 
-      closeClusterIndices <- try(as_tibble(which(clustdist<(175), arr.ind = TRUE, useNames = TRUE)) %>%
-                                   rename(loc1_rowIndex = row, loc2_rowIndex = col), silent = TRUE)
-      
-      # map updIDs in newclusts to xy.clust ID in existing
-      # MATCHES
-      matchingclustermap <- data.frame(existID = existingclust$xy.clust[closeClusterIndices$loc1_rowIndex], 
-                                       updID = newclust$xy.clust[closeClusterIndices$loc2_rowIndex])
-      # Is this ^ the right way round?
-      # CC: I've found some cases where the indexes seem to be swapped. Unsure what's causing it 
-      
-      # Short term fix
-      # Removing any matched clusters with 'NA' as an index (can't find the cause right now) 
-      if (nrow(matchingclustermap) != 0) {
-        for (i in 1:nrow(matchingclustermap)) {
-          if (is.na(matchingclustermap$existID[[i]]) | is.na(matchingclustermap$updID)[[i]])
-          {matchingclustermap <- matchingclustermap[-i,]}
-        }
-      }
-      
-      logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(matchingclustermap), "  matched to existing clusters"))
-      
-      
-    }
-    
-    ## Merge clusters ---------------------------------------------------------------------
-    # We want to keep existing clusters and allocate new points to new clusters
-    
-    
-    
-    
-    logger.trace(paste0(as.Date(clusterdate), ":     Merging with matched clusters"))
-    
-    
-    if (length(unique(matchingclustermap$updID)) != dim(matchingclustermap)[1]) {
-      
-      # Find which tags are used more than once
-      ids <- which(table(matchingclustermap$updID) > 1)
-      
-      for (u in 1:length(ids)) {
-        
-        tempdat <- filter(matchingclustermap, updID == names(ids)[u]) # selects IDs of clusters to be merged
-        allocpoints <- filter(clusters_new$tagdata, xy.clust %in% tempdat$updID) # filters to tags associated with these points in NEW data
-        existingclustpoints <- filter(clusterDataDwnld, xy.clust %in% tempdat$existID) # gets data for OLD clusters to be merged
-        
-        tempdat$updID <- paste0(tempdat$updID, ".", tempdat$existID) # tags these with previous cluster name
-        
-        # Allocate points to the nearest of existing IDs
-        existclustlocs <- existingclustpoints %>% as.data.frame() %>% dplyr::select(x, y)
-        allocpointsloc <- allocpoints %>% as.data.frame() %>% dplyr::select(x, y)
-        pdists <- as.matrix(dist(rbind(existclustlocs, allocpointsloc)))
-        pdists <- pdists[(nrow(existingclustpoints) + 1):nrow(pdists), 1:nrow(existingclustpoints)] 
-        mindists <- apply(pdists, 1, min)
-        
-        for (d in 1:length(mindists)) {
-          cid <- which(pdists[d,] == mindists[d])
-          allocpoints$xy.clust[d] <- tempdat$updID[cid]
-        }
-        
-        
-        
-        matchingclustermap <- filter(matchingclustermap, updID != names(ids)[u]) %>%
-          bind_rows(., tempdat)
-        
-        
-        temp <- filter(clusters_new$tagdata, xy.clust %!in% names(ids)[u])
-        
-
-        tryCatch(
-          {
-            clusters_new$tagdata <- mt_stack(temp, allocpoints, .track_combine = "merge", .track_id_repair = "unique")
-            },
-          
-          # This bypasses bug in which mt_stack thinks that allocpoints and temp have different crs codes
-          # by converting to dataframe, binding, and returning to move2, whilst storing track attributes
-          error = function(e) {
-            logger.warn(
-              paste0(as.Date(clusterdate), ":     TRYCATCH ERROR: mt_stack error returning crs code error")
-            )
-            trackcol <- mt_track_id_column(temp)
-            timecol <- mt_time_column(temp)
-            trackattributes <- colnames(mt_track_data(temp))
-            trackDat <- rbind(as.data.frame(temp), as.data.frame(allocpoints)) %>% st_as_sf(crs = st_crs(temp))
-            clusters_new$tagdata <- mt_as_move2(trackDat, track_id_column = trackcol, time_column = timecol, track_attributes = trackattributes)
-          } 
-        )
-        
-        # PROBLEM LINE:
-#        clusters_new$tagdata <- filter(clusters_new$tagdata, xy.clust %!in% names(ids)[u]) %>%
-#          mt_stack(., allocpoints, .track_combine = "merge", .track_id_repair = "unique") # error here
-        #  bind_rows(., allocpoints) # error here
-        newclust <- filter(newclust, xy.clust != names(ids)[u])
-        
-      }
-    }
-    
-    # When two new clusters match one existing cluster
-    # edit to retain only the existing cluster
-    
-    if(length(unique(matchingclustermap$existID)) != dim(matchingclustermap)[1]) {
-      
-      ids <- which(table(matchingclustermap$existID) > 1)
-      
-      for (u in 1:length(ids)) {
-        
-        # find points allocated to updID
-        tempdat <- filter(matchingclustermap, existID == names(ids)[u])
-        
-        allocpoints <- filter(clusters_new$tagdata, xy.clust %in% tempdat$updID)
-        existclustpoints <- filter(clusterDataDwnld, xy.clust %in% tempdat$existID)
-        
-        newname <- paste0(tempdat$updID[1], ".", tempdat$existID)
-        
-        newclust <- filter(newclust, xy.clust %!in% tempdat$updID)
-        
-        # Problem line
-        #allocpoints <- allocpoints %>% mutate(xy.clust = newname[1])
-        #clusters_new$tagdata <- filter(clusters_new$tagdata, xy.clust %!in% tempdat$updID) %>%
-         # mt_stack(., allocpoints, .track_combine = "merge")
-        
-        allocpoints <- allocpoints %>% mutate(xy.clust = newname[1])
-        temp <- filter(clusters_new$tagdata, xy.clust %!in% tempdat$updID)
-   
-        tryCatch(
-          {
-            clusters_new$tagdata <- mt_stack(temp, allocpoints, .track_combine = "merge")
-          },
-          
-          # This bypasses bug in which mt_stack thinks that allocpoints and temp have different crs codes
-          # by converting to dataframe, binding, and returning to move2, whilst storing track attributes
-          error = function(e) {
-            logger.warn(
-              paste0(as.Date(clusterdate), ":     TRYCATCH ERROR: mt_stack error returning crs code error")
-            )
-            trackcol <- mt_track_id_column(temp)
-            timecol <- mt_time_column(temp)
-            trackattributes <- colnames(mt_track_data(temp))
-            trackDat <- rbind(as.data.frame(temp), as.data.frame(allocpoints)) %>% st_as_sf(crs = st_crs(temp))
-            clusters_new$tagdata <- mt_as_move2(trackDat, track_id_column = trackcol, time_column = timecol, track_attributes = trackattributes)
-          } 
-        )
-        
-             
-        tempdat$updID <- newname
-        matchingclustermap <- filter(matchingclustermap, existID != names(ids)[u]) %>%
-          bind_rows(., tempdat %>% slice(1))
-        
-      }
-      
-    }
-    
-    
-    
-    
-    # EXISTING clusters
-    existIDs <- existingclust$xy.clust[existingclust$xy.clust %!in% matchingclustermap$existID]
-    
-    if (length(existIDs) != 0) {
-      existclustermap = data.frame(existID = existIDs,
-                                   updID = NA)
-    } else {
-      existclustermap <- data.frame(existID = NULL, upID = NULL)
-    }
-    
-    # NEW clusters
-    newIDs <- newclust$xy.clust[newclust$xy.clust %!in% matchingclustermap$updID]
-    
-    # Find ID to start new clusters at
-    if (length(newIDs) != 0) {
-      if(!is.null(existingclust)) {
-        startid <- max(clusterDataDwnld$xy.clust) + 1
-      } else {startid <- 1}
-      
-      newclustermap <- data.frame(existID = startid:(startid - 1 + length(newIDs)), 
-                                  updID = newIDs)
-    } else {
-      newclustermap <- data.frame(existID = NULL, upID = NULL)
-      # newclustermap <- NULL
-    }
-    
-    logger.trace(paste0(as.Date(clusterdate), ":     Creating updatedclustermap"))
-    updatedclustermap <- rbind(matchingclustermap, newclustermap, existclustermap, c(NA, "upNA"))
-    colnames(updatedclustermap) <- c("existID", "updID") # fix for 0-cluster situation
-    
-    
-    
-    
-    
-    ## Update the xytagdata (7-day data) ----------------------------------------------
-    
-    
-    
-    #f(!is.null(newclustermap) | !is.null(existclustermap)) {
-    
-    xytagdata <- clusters_new$tagdata %>% rename(updID = xy.clust) %>%
-      left_join(., updatedclustermap) %>%
-      rename(xy.clust = existID) %>%
-      mutate(xy.clust = as.numeric(xy.clust)) %>%
-      dplyr::select(-updID) %>%
-      suppressMessages()
-    
-    # Change the new cluster IDs
-    newclust <- newclust %>% rename(updID = xy.clust) %>%
-      left_join(., updatedclustermap) %>%
-      rename(xy.clust = existID) %>%
-      mutate(xy.clust = as.numeric(xy.clust)) %>%
-      dplyr::select(-updID) %>%
-      suppressMessages()
-    
-    
-    # Add back to 14-day clustertable
-    if (is.null(existingclust) | is.null(newclust)) {
-      updatedClusters <- newclust
-    } else {
-      updatedClusters <- full_join(existingclust, newclust) %>%
-        group_by(xy.clust) %>%
-        summarise(x = mean(x), y = mean(y)) %>%
-        filter(xy.clust %in% newclust$xy.clust) %>%
-        suppressMessages()
-      
-    } 
-    
-    #} else {
-    #  
-    #  # If no new clusters are created nor exist already, simply NA the full tagdata clusters
-    #  xytagdata <- clusters_new$tagdata %>% 
-    #    mutate(xy.clust = NA)
-    #  updatedClusters <- NULL
-    #  
-    #}
-    
-    
-    # Update main data
-    datmodsub <- datmodsub %>%
-      filter(index %!in% xytagdata$index) %>%
-      bind_rows(., xytagdata) %>%
-      arrange(mt_track_id(.), mt_time(.))
-    
-    
-    
-    ## Create cluster table -------------------------------------------------------
-    
-    logger.trace(paste0(as.Date(clusterdate), ":     Generating clustertable"))
-    
-    # We don't want to run this if there are no clusters present at this time
-    if (nrow(filter(datmodsub, xy.clust %in% updatedClusters$xy.clust)) != 0) {
-      
-      clustertable_update <- makeclustertable(filter(datmodsub, xy.clust %in% updatedClusters$xy.clust),
-                                              updatedClusters,
-                                              behavsystem) #%>% 
-      #      as.data.frame()
-    } else {
-      clustertable_update <- NULL
-    }
-    
-    # Don't run this next section if there are no new clusters
-    #  if(nrow(updatedClusters) != 0 & !is.null(updatedClusters)) {
-    if(!is.null(updatedClusters)) {
-      
-      # Calculate revisits ---------------------------------------------------------
-      
-      
-      
-      logger.trace(paste0(as.Date(clusterdate), ":     Calculating revisits"))
-      cls = updatedClusters$xy.clust
-      tempdat = NULL
-      for(i in cls){
-        tempdat <- datmodsub %>% 
-          ungroup() %>%
-          filter(between(mt_time(.), 
-                         clustertable_update$firstdatetime[clustertable_update$xy.clust == i], 
-                         clustertable_update$lastdatetime[clustertable_update$xy.clust == i]),
-                 mt_track_id(.) %in% c(strsplit(clustertable_update$birds[clustertable_update$xy.clust == i], split=", ")[[1]])) %>%
-          mutate(xy.clust = ifelse(xy.clust == i, xy.clust, 0),
-                 xy.clust = ifelse(is.na(xy.clust), 0, xy.clust),
-                 incluster = ifelse(xy.clust==i, 1, 0),
-                 indaycluster = ifelse(xy.clust==i & between(hour(mt_time(.)), 10, 15), 1,0)) %>%
-          group_by(mt_track_id(.)) %>%
-          as.data.frame() %>%
-          summarise(xy.clust = i,
-                    visitsinevent = sum(rle(incluster)$values),
-                    dayvisits = sum(rle(indaycluster)$values)) %>%
-          summarise(xy.clust = i,
-                    visitsinevent_tot = sum(visitsinevent),
-                    visitsinevent_mean = mean(visitsinevent),
-                    dayvisits_tot = sum(dayvisits),
-                    dayvisits_mean = mean(dayvisits)) %>%
-          bind_rows(tempdat, .) %>%
-          as.data.frame()# %>%
-        #dplyr::select(-geometry)
-      }
-      
-      if(!is.null(tempdat)) {
-        clustertable_update <- merge(clustertable_update, tempdat, by = "xy.clust")
-      }
-      
-      
-      
-      ## Calculate distance to night points ---------------------------------------
-      # Select date range plus one day either side of cluster
-      
-      logger.trace(paste0(as.Date(clusterdate), ":     Calculating distance to night points"))
-      tempdat = NULL
-      for(i in cls){
-        nightpts <- datmodsub %>% 
-          ungroup() %>%
-          filter(between(mt_time(.), 
-                         clustertable_update$firstdatetime[clustertable_update$xy.clust == i] - days(1),
-                         clustertable_update$lastdatetime[clustertable_update$xy.clust == i] + days(1)),
-                 mt_track_id(.) %in% c(strsplit(clustertable_update$birds[clustertable_update$xy.clust == i], split=", ")[[1]]),
-                 hour(mt_time(.)) > 21 | hour(mt_time(.)) < 3) %>%
-          as.data.frame() %>%
-          dplyr::select(x,y)
-        if(nrow(nightpts)>0){
-          
-
-          clpts <- datmodsub %>%
-            ungroup() %>%
-            filter(between(mt_time(.),
-                           clustertable_update$firstdatetime[clustertable_update$xy.clust == i], 
-                           clustertable_update$lastdatetime[clustertable_update$xy.clust == i]),
-                   mt_track_id(.) %in% c(strsplit(clustertable_update$birds[clustertable_update$xy.clust == i], split=", ")[[1]])) %>%
-            as.data.frame() %>%
-            dplyr::select(x,y)
-          
-          d <- as.matrix(dist(rbind(nightpts, clpts)))[1:nrow(nightpts),(nrow(nightpts)+1):(nrow(nightpts)+nrow(clpts))] # problem line
-          if(!is.null(dim(d))){
-            d <- apply(d, 2, min)
-          }
-          t <- data.frame(xy.clust = i, nightdist_mean = mean(d), nightdist_median = median(d), nightdist_sd = sd(d))
-        }else{
-          t <- data.frame(xy.clust = i, nightdist_mean = NA, nightdist_median = NA, nightdist_sd = NA)
-        }
-        
-        tempdat <- bind_rows(tempdat, t) %>%
-          as.data.frame() 
-        
-      }
-      
-      if(!is.null(tempdat)) {
-        clustertable_update <- merge(clustertable_update, tempdat, by = "xy.clust")
-      }
-      
-    }
-    
-    ## Return other clusters to dataset --------------------------------------------------
-    logger.trace(paste0(as.Date(clusterdate), ":     Merging back into fullclustertable"))
-    
-    if(!is.null(clusterDataDwnld)) {
-      fullclustertable <- bind_rows(clustertable_update,
-                                    filter(clusterDataDwnld, xy.clust %!in% clustertable_update$xy.clust)) %>%
-        arrange(desc(lastdatetime))
-    } else {
-      
-      if(!is.null(clustertable_update)) {
-        fullclustertable <- clustertable_update %>%
-          arrange(desc(lastdatetime))
-      } else {
-        fullclustertable <- NULL
-      }
-      
-    }
-    
-    
-    
-    
-    logger.trace(paste0(as.Date(clusterdate), ":     Increasing clusterdate to ", clusterdate + days(clusterstep)))
-    # Increase date and repeat
-    if(!is.null(fullclustertable)) {clusterDataDwnld <- fullclustertable} else {clusterDataDwnld <- NULL} # ifelse doesn't wor with null statements
-    # clusterDataDwnld <- ifelse(!is.null(fullclustertable), fullclustertable, NULL) # return it to move2 here
-    logger.debug(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(fullclustertable), " cumulative clusters generated"))
-    clusterdate <- clusterdate + days(clusterstep)
-    
-  }
-  
-  
-  return(list(clustereventdata = datmodsub, clustereventtable = fullclustertable))
-}
-
-
-
-
-
-# MoveApps RFunction -----------------------------------------------------------------------
-
-rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwindow = 7, clustexpiration = 14, avianBehav = TRUE,  clustercode = "") {
-  
   # Check clustercode
   if (clustercode != "") {
     logger.trace(paste0("Provided clustercode is ", clustercode))
@@ -712,7 +48,7 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
     clusterstart <- max(mt_time(data), na.rm = TRUE) - days(14)
   }
   
-  if(avianBehav == TRUE & "behav" %!in% colnames(data)) {
+  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
     logger.fatal("Classified behaviour column 'behav' is not contained by input data. Unable to perform clustering. Please use classification MoveApp prior to this stage in the workflow")
     stop()
   }
@@ -725,33 +61,622 @@ rFunction = function(data, clusterstart, clusterend, clusterstep = 1, clusterwin
   
   logger.info(paste0("Clustering between ", clusterstart, " and ", clusterend))
   
-  # Performing clustering
-  clusteredData <- clustering(data, as.Date(clusterstart), as.Date(clusterend), clusterstep, clusterwindow, clustexpiration, behavsystem = avianBehav)
   
-  # Retrieve tagdata output
-  clusteredTagData <- clusteredData$clustereventdata %>%
-    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
+  # Filter to relevant time window for overall clustering:
+  clusterstart %<>% as_date()
+  clusterend %<>% as_date()
+  eventdata <- data %>%
+    filter(between(mt_time(data), clusterstart - days(clusterwindow), clusterend + days(1)))
   
-  # Retrieving clustertable and releasing as artefact, updating geometry to MEDIAN location
-  clustertable <- clusteredData$clustereventtable %>%
-    mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)) %>%
-    sf::st_drop_geometry() %>%
-    sf::st_as_sf(coords = c("x.med", "y.med"), crs = sf::st_crs(data)) %>%
-    mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
   
-  # Fix to remove 'outdated' clusters:
-  logger.info(paste0("Removing clusters that have since been overwritten in the tagdata: ", 
+  
+  # ------------------------------------------------------------------
+  # Clustering Loop
+  #'  Operate on a rolling-window basis starting from clusterstart
+  #'  We increment by clusterstep (in days) and re-cluster until we reach the clusterend
+  #'  
+  #'  'clusterdate' parameter will define the final day of data we are currently clustering up to
+  # -----------------------------------------------------------------
+  
+  clusterdate <- ceiling_date(clusterstart, unit = "days")
+  
+  # Set up the initial case, in which we have no roll-over of cluster data:
+  clusterDataDwnld <- NULL
+  tempclustertable <- NULL
+  
+  # Begin loop:
+  while (clusterdate <= ceiling_date(clusterend, unit = "days")) {
+    
+
+    #' -----------------------------------------------------------------------
+    #' 1. Data Setup and Import ----------------------------------------------
+    #'  Here, filter to the relevant window and import
+    #'  data from the last rolling-window (if available)
+    
+    # Import cluster data from previous run
+    # This will contain only the key information for the clustering rolling-window 
+    # i.e. location data and timestamp
+    if (!is.null(tempclustertable)) {
+      clusterDataDwnld <- tempclustertable
+    }
+    
+    # Filter the location data down to our clustering window
+    clusteringData <- filter(eventdata,
+                             # Take the number of days we need for clustering:
+                             between(mt_time(eventdata), 
+                                     clusterdate - days(clusterwindow), 
+                                     clusterdate 
+                             ))
+    
+    skipToNext <- FALSE # Determines whether to jump this clusterstep
+    
+    # Check that there is enough tracking data to cluster, and skip if not:
+    if (nrow(clusteringData) < 3) {
+      logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough data within clustering period"))
+      skipToNext <- TRUE}
+    
+    # And if using the behavioural classification system, 
+    # check there is enough non-travelling behaviour:
+    if (behavsystem == TRUE) {
+      if (sum(clusteringData$behav != "STravelling") < 2) { 
+        logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough stationary behaviour within clustering period"))
+        skipToNext <- TRUE}}
+    
+    # If either of these conditions are met, skip ahead to the next possible clusterdate:
+    if (skipToNext == TRUE) {
+      # Find minimum following date on which we have data
+      clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
+        mt_time() %>%
+        min() + days(clusterwindow)
+      logger.trace(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))
+      next}
+    
+    
+    
+    # ----------------------------------------------------------------------
+    #' 2. Perform Clustering ----------------------------------------------
+    #' Now that we know there is enough data, generate the new clusters
+    #' 
+
+    
+    # If using behavioural classification, filter to stationary behaaviours:
+    if (behavsystem == TRUE) {clusterpoints <- filter(clusteringData,
+                                                      behav %!in% c("STravelling", "Unknown"))
+    } else {clusterpoints <- clusteringData} 
+    
+    logger.trace(paste0(as.Date(clusterdate), ":     Creating new clusters for ", nrow(clusterpoints), " locations"))
+    
+    # Generate clusters:
+    clusterpoints %<>% mutate(
+      ID = 1:nrow(.),
+      X = st_coordinates(.)[, 1],
+      Y = st_coordinates(.)[, 2]
+    )
+    
+    # Build distance matrix (no SF method):
+    mdist <- dist(cbind(clusterpoints$X, clusterpoints$Y))
+    hc <- hclust(as.dist(mdist), method = "complete")
+    
+    # Add cluster information to data:
+    clusterpoints$clust <- cutree(hc, h = d)
+    genclustertable <- clusterpoints
+    
+    # Filter out clusters with only one location: (increasing to 3)
+    cid <- as.vector(which(table(clusterpoints$clust) < 3))
+    genclustertable %<>% filter(clust %!in% cid)
+    
+    
+    # Append cluster data ---------------------------------------------
+    # Generate a median location for each centroid:
+    clusts <- genclustertable %>%
+      group_by(clust) %>%
+      summarise(geometry = st_combine(geometry))
+    for (j in 1:nrow(clusts)) {
+      clustid <- clusts$clust[j]
+      clusts$geometry[j] <- calcGMedianSF(clusts[j,])
+    }
+
+    # Create output table:
+    clusts %<>% 
+      mutate(xy.clust = paste0("up", clust)) %>%
+      select(-clust)
+    
+    # Output location data:
+    xydata <- clusterpoints %>% ungroup() %>%
+      mutate(xy.clust = paste0("up", clust)) %>%
+      select(-clust) %>%
+      
+      # Remove the non-significant clusters:
+      mutate(xy.clust = if_else(xy.clust %in% unique(clusts$xy.clust), xy.clust, "upNA"))
+    
+    
+
+    # -----------------------------------------------
+    # 3. Identify Matching Clusters ----------------------
+  
+    newclust <- clusts
+    logger.trace(paste0(as.Date(clusterdate), 
+                        ":     ", 
+                        nrow(newclust),
+                        " new clusters generated"))
+    
+    if (is.null(clusterDataDwnld) | nrow(newclust) == 0) {
+      # In this case, no matches are possible
+      matchingclustermap <- data.frame(existID = NULL, updID = NULL)
+      if (is.null(clusterDataDwnld)) {
+        existingclust <- NULL
+      }
+      
+    } else {
+
+      existingclust <- clusterDataDwnld %>%
+        filter(lastdatetime + days(clustexpiration) > clusterdate - days(clusterwindow)) %>%
+        arrange(xy.clust) 
+      
+      # Generate distance matrix:
+      # Rows are existing clusts, columns are new clusts
+      dists <- st_distance(existingclust, newclust) %>% units::drop_units()
+      rownames(dists) <- existingclust$xy.clust
+      colnames(dists) <- newclust$xy.clust
+      
+      # Identify close clusters (within 175m) and arrange in table:
+      closeClusterIndices  <- try(as_tibble(
+        which(dists < 175, arr.ind = T, useNames = T)))
+      closeClusterIndices$row <- rownames(dists)[closeClusterIndices$row]
+      closeClusterIndices$col <-  colnames(dists)[closeClusterIndices$col]
+      matchingclustermap <- closeClusterIndices %>%
+        as.data.frame() %>% 
+        rename(existID = row,
+               updID = col)
+    }
+    
+    
+    # -----------------------------------------------
+    # Merging Clusters: Case 1 ----------------------
+    #'
+    #' Multiple old clusters -> 1 new cluster
+    #' In this case, we want to re-allocate the constituent locations
+    #' of the new to the nearest 'old' cluster
+    
+    # Check to see if this is true:
+    if (length(unique(matchingclustermap$updID)) != nrow(matchingclustermap)) {
+      
+      # Retrieve their IDs
+      ids <- which(table(matchingclustermap$updID) > 1)
+      for (u in 1:length(ids)) {
+        
+        # 1: Get merge, location, and old cluster data
+        tempdat <- filter(matchingclustermap, updID == names(ids)[u])
+        allocpoints <- filter(xydata, xy.clust %in% tempdat$updID)
+        existingclustpoints <- filter(clusterDataDwnld, xy.clust %in% tempdat$existID)
+        
+        # Update cluster names:
+        tempdat$updID <- paste0(tempdat$updID, ".", tempdat$existID)
+        
+        # Generate distances between new cluster locations and old cluster medians:
+        pdists <- st_distance(allocpoints, existingclustpoints) %>% 
+          units::drop_units() %>%
+          as.data.frame() %>%
+          mutate(
+            # Get index of nearest cluster
+            nearind = apply(., 1, which.min),
+            allocclust = existingclustpoints$xy.clust[nearind]
+          )
+        
+        # Match to nearest:
+        allocpoints$xy.clust <- tempdat$updID[match(pdists$allocclust, tempdat$existID)]
+        
+        # Remove from clustermap:
+        matchingclustermap %<>% filter(updID != names(ids)[u]) %>%
+          bind_rows(tempdat)
+        }
+      }
+    
+    # -----------------------------------------------
+    # Merging Clusters: Case 2 ----------------------
+    #'
+    #' 1 old cluster -> multiple new clusters
+    #' In this case, we just want to keep the old cluster
+    #' and we reallocate all new clusters to the same ID
+    
+    # Check to see if this is true:
+    if (length(unique(matchingclustermap$existID)) != nrow(matchingclustermap)) {
+      
+      # Retrieve their IDs
+      ids <- which(table(matchingclustermap$existID) > 1)
+      for (u in 1:length(ids)) {
+        
+        # 1: Deal with cluster-matching table
+        tempdat <- filter(matchingclustermap, existID == names(ids)[u])
+        newname <- paste0(tempdat$updID[1], ".", tempdat$existID[1]) # new cluster ID
+        newmatch <- tempdat[1,]
+        newmatch$updID <- newname # this is the match we want
+        matchingclustermap %<>% bind_rows(newmatch) # add to the cluster-match table
+        
+        # 2: Deal with clustertable just by cutting the cluster out
+        # They'll be re-introduced with the matching cluster-map
+        newclust <- filter(newclust, xy.clust %!in% tempdat$updID)
+        
+        # 3: Deal with tracking data by assigning all to new cluster
+        xydata$xy.clust[xydata$xy.clust %in% tempdat$updID] <- newname
+      }
+    }
+    
+    logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(matchingclustermap), "  matched to existing clusters"))
+    
+    
+    # -----------------------------------------------
+    # Merging Clusters: Case 3 ----------------------
+    #'
+    #' Pre-existing clusters with no  merges
+
+    # Retrieve the existing IDs not being merged:
+    existIDs <- existingclust$xy.clust[existingclust$xy.clust %!in% matchingclustermap$existID]
+    
+    # Generate table matching them to nothing
+    if (length(existIDs) != 0) {
+      existclustermap <- data.frame(
+        existID = existIDs,
+        updID = NA
+      )
+    } else {
+      existclustermap <- data.frame(existID = NULL, upID = NULL)
+    }
+    logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(existclustermap), "  clusters not matched"))
+    
+    
+    # -----------------------------------------------
+    # Merging Clusters: Case 4 ----------------------
+    #'
+    #' New clusters with no previous match (didn't previously exist)
+    
+    # Retrieve the IDs of these clusters:
+    newIDs <- newclust$xy.clust[newclust$xy.clust %!in% matchingclustermap$updID]
+    
+    # We find the lowest 'free' value at which we can start their cluster IDs:
+    if (length(newIDs) != 0) {
+      if (!is.null(existingclust)) {
+        startid <- max(clusterDataDwnld$xy.clust) + 1
+      } else {startid <- 1}
+      
+      # Generate table with these new IDs:
+      newclustermap <- data.frame(existID = startid:(startid - 1 + length(newIDs)), 
+                                  updID = newIDs)
+    } else {
+      newclustermap <- data.frame(existID = NULL, upID = NULL)
+    }
+    logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(newclustermap), "  new clusters have no match"))
+    
+    
+    # ----------------------------------------------
+    # 4. Perform Matching ----------------------------
+    
+    # Combine the three merge tables (and an option for NA clusters):
+    updatedclustermap <- rbind(
+      matchingclustermap,
+      newclustermap,
+      existclustermap,
+      c(NA, "upNA")
+    )
+    colnames(updatedclustermap) <- c("existID", "updID")
+    
+    # First, match location data:    
+    xytagdata <- xydata %>%
+      rename(updID = xy.clust) %>%
+      left_join(updatedclustermap) %>% # Match clusters
+      rename(xy.clust = existID) %>%
+      mutate(xy.clust = as.numeric(xy.clust)) %>%
+      dplyr::select(-updID) %>% # Drop update column
+      suppressMessages()
+
+    # Secondly, cluster data:
+    newclust <- newclust %>%
+      rename(updID = xy.clust) %>%
+      left_join(updatedclustermap) %>%
+      rename(xy.clust = existID) %>%
+      mutate(xy.clust = as.numeric(xy.clust)) %>%
+      dplyr::select(-updID) %>%
+      suppressMessages()
+
+    # Combine previous and updated clusterdata:
+    if (is.null(existingclust) | is.null(newclust)) {
+      updatedClusters <- newclust # nothing to add in this case
+    } else {
+      updatedClusters <- rbind(existingclust[, c("xy.clust", "geometry")], 
+                               newclust) %>%
+        group_by(xy.clust) %>%
+        summarise(geometry = st_union(geometry)) %>% # Join geometries together into multipoint
+        st_centroid() # Find mean location of two centroids (we should change this later)
+    }
+
+    # Add cluster data into main location data:
+    data %<>%
+      filter(index %!in% xytagdata$index) %>% # remove rows whose clusters need to be updated
+      bind_rows(., xytagdata) %>% # add them back in with the new update
+      arrange(mt_track_id(.), mt_time(.)) # reorder
+
+    
+    # ----------------------------------------------------
+    # 5. Create TEMPORARY clustertable ----------------------
+    # This will contain only the essential information for
+    # cluster-updating: location, time, clustID
+    
+    logger.trace(paste0(as.Date(clusterdate), ":     Generating clustertable"))
+    
+    # Perform this step only if there are updates to perform on the tag data:
+    if (nrow(filter(data, xy.clust %in% updatedClusters$xy.clust)) != 0) {
+      
+      # Bind necessary data on updated clusters:
+      tempclusts <- filter(data, xy.clust %in% updatedClusters$xy.clust) %>% mutate(
+        datetime = mt_time(.)
+      ) 
+      tempclusts %<>%
+        group_by(xy.clust) %>%
+        summarise(
+          firstdatetime = min(datetime),
+          lastdatetime = max(datetime),
+          geometry = st_combine(geometry)
+        ) 
+      
+      # Generate median location:
+      for (j in 1:nrow(tempclusts)) {
+        tempclusts$geometry[j] <- calcGMedianSF(tempclusts[j,])
+      }
+      clustertable_update <- tempclusts
+    } else {
+      
+      # If impossible (i.e. no clusters exist), nullify this
+      clustertable_update <- NULL
+    }
+    
+    
+    # -----------------------------------------------------------------------
+    # 6. Return other clusters to the dataset ----------------------------------
+    logger.trace(paste0(as.Date(clusterdate), ":     Merging back into clusterDataDwnld"))
+    
+    if (!is.null(clusterDataDwnld)) {
+      
+      clusterDataDwnld <- bind_rows(clustertable_update,
+                                    filter(clusterDataDwnld, 
+                                           xy.clust %!in% clustertable_update$xy.clust)) %>%
+        arrange(desc(firstdatetime))
+    } else {
+      
+      if (!is.null(clustertable_update)) {
+        # If there is an update to the clustertable 
+        # but no original data:
+        clusterDataDwnld <- clustertable_update %>%
+          arrange(desc(firstdatetime))
+      } else {
+        # Otherwise, no clusters whatsoever
+        clusterDataDwnld <- NULL
+      }
+    }
+    
+    # Log progress:
+    logger.trace(paste0(as.Date(clusterdate), ":     Increasing clusterdate to ", clusterdate + days(clusterstep)))
+
+    
+    # ----------------------------------------------------
+    # 7. Generate output & move on rolling window -----------
+    
+    logger.trace(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(clusterDataDwnld), " cumulative clusters generated"))
+    logger.trace(paste0(as.Date(clusterdate), ":     Increasing clusterdate to ", clusterdate + days(clusterstep)))
+    clusterdate <- clusterdate + days(clusterstep)
+  
+    # End of clustering loop ---------
+    }
+  
+  # ----------------------------------------------------
+  # 8. Generate FULL clustertable ----------------------
+  # This will contain output cluster information
+  clustertable <- data %>%
+    filter(!is.na(xy.clust)) %>%
+    
+    # Essential data for later computation:
+    mutate(
+      tag = mt_track_id(.),
+      datetime = mt_time(.),
+      timediff_hrs = mt_time_lags(.) %>% 
+        units::set_units("minutes") %>% 
+        units::drop_units()/60,
+      hour = mt_time(.) %>% 
+        lubridate::hour()
+    ) %>%
+    group_by(xy.clust) %>%
+    summarise(geometry = st_combine(geometry),
+              
+              # Time data:
+              firstdatetime = min(datetime),
+              lastdatetime = max(datetime),
+              days = length(unique(date(datetime))),
+              totalduration = (ceiling_date(lastdatetime, unit = "days") - floor_date(firstdatetime, unit = "days")) %>% as.integer(),
+              daysempty = as.numeric(totalduration - days),
+              TimeTotal = sum(timediff_hrs, na.rm = T),
+              TimeDay = sum(timediff_hrs[hour > 5 & hour < 17], na.rm = T),
+              TimeFeed = sum(timediff_hrs[behav == "SFeeding"], na.rm = T),
+              MedianHourFeed = median(hour[behav == "SFeeding"], na.rm = T),
+              MedianHourDay = median(hour[hour > 5 & hour < 17], na.rm = T),
+              
+              # Behavioural data:
+              nbirds = length(unique(tag)),
+              birds = paste(unique(tag), collapse = ", "),
+              Total = n(),
+              SFeeding = sum(behav == "SFeeding"),
+              SRoosting = sum(behav == "SRoosting"),
+              SResting = sum(behav == "SResting"),
+
+              DistMedian = NA,
+              DistSD = NA,
+              dist_to_bird_m = NA,
+              within_25k = NA,
+              within_50k = NA,
+              nightdist_mean = NA, 
+              nightdist_med = NA, 
+              nightdist_sd = NA) 
+
+  rm(list = c("clusterDataDwnld", "clusteringData", "clusterpoints", "eventdata", "genclustertable", "xydata", "xytagdata", "mdist")) # clear some storage for next operations
+  clustertable %<>% mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust") # switch to move2 for ease
+  
+  # Generate distance data:
+  logger.trace(paste0("Generating distance data for all clusters. This may run slowly"))
+
+  tempdat <- NULL
+  for (k in 1:nrow(clustertable)) {
+    
+    if (mod(k, 100) == 1) {logger.trace(paste0("    ", round(100 * (k / nrow(clustertable)), 3), "% complete"))} # Log progress
+    
+    # Convert cluster to its constituent points: 
+    clustdat <- st_geometry(clustertable[k,]) %>%
+      st_cast("POINT") 
+    dists <- clustdat %>%
+      st_distance() %>% 
+      units::set_units("metres") %>% # to be safe
+      units::drop_units()
+    
+    # Median and SD distance between points:
+    dists <- dists[upper.tri(dists)] %>%
+      as.vector() 
+    tempmed <- median(dists)
+    tempsd <- sd(dists)
+    clustertable$DistMedian[k] <- tempmed
+    clustertable$DistSD[k] <- tempsd
+    
+    # Generate final median location:
+    clustertable$geometry[k] <- calcGMedianSF(clustdat)
+    
+    # Generate revisit data:
+    birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ")
+    tempdat <- data %>%
+      ungroup() %>%
+      filter(between(
+        mt_time(.), 
+        clustertable$firstdatetime[k],
+        clustertable$lastdatetime[k]),
+      mt_track_id(.) %in% birdsinclust) %>%
+      mutate(incluster = ifelse(xy.clust != clustertable$xy.clust[k] | is.na(xy.clust), 0, 1),
+             indaycluster = ifelse(incluster == 1 & between(hour(mt_time(.)), 10, 15), 1, 0)) %>%
+      group_by(mt_track_id(.)) %>%
+      st_drop_geometry() %>%
+      as.data.frame() %>%
+      summarise(
+        xy.clust = clustertable$xy.clust[k],
+        visitsinevent = sum(rle(incluster)$values),
+        dayvisits = sum(rle(indaycluster)$values)) %>%
+      summarise(xy.clust = clustertable$xy.clust[k],
+                visitsinevent_tot = sum(visitsinevent),
+                visitsinevent_mean = mean(visitsinevent),
+                dayvisits_tot = sum(dayvisits),
+                dayvisits_mean = mean(dayvisits)) %>%
+      bind_rows(tempdat, .)
+    
+    # Generate data on nearest birds/ids -----------------------
+    
+    clustdat <- clustertable[k,]
+    locavailable <- FALSE
+    while (locavailable == FALSE) {
+      # Filter to time window of cluster and remove all birds in the cluster (travelling + feeding):
+      neartags <- data %>% 
+        filter(between(timestamp, clustdat$firstdatetime, clustdat$lastdatetime),
+               individual_local_identifier %!in% unlist(stringr::str_split(clustdat$birds, pattern = ", "))
+        )
+      if (nrow(neartags) != 0) {
+        locavailable <- TRUE
+      } else {
+        # If no locations in window, we extend it 1hr each way and check again
+        clustdat$firstdatetime <- clustdat$firstdatetime - lubridate::hours(1)
+        clustdat$lastdatetime <- clustdat$lastdatetime + lubridate::hours(1)
+      }
+    }
+    # Get the nearest location
+    dist <- neartags[st_nearest_feature(st_geometry(clustdat),
+                                             neartags),] %>%
+      st_distance(clustdat)
+    clustertable$dist_to_bird_m[k] <- units::set_units(dist, "metres") %>%
+      units::drop_units()
+    
+    # Identify active tags
+    activetags <- data %>% 
+      filter(between(mt_time(.), clustdat$firstdatetime, clustdat$lastdatetime)) %>%
+      mt_track_id(.) %>%
+      unique()
+    
+    # Start with 50km buffer:
+    rad50 <- st_buffer(clustdat, dist = 50000)
+    neartags2 <- data %>% 
+      mutate(X = st_coordinates(.)[, 1],
+             Y = st_coordinates(.)[, 2]) %>%
+      filter(between(mt_time(.), clustdat$lastdatetime - days(90), clustdat$lastdatetime),
+             between(X, st_coordinates(clustdat)[, 1] - 50000, st_coordinates(clustdat)[, 1] + 50000),
+             between(Y, st_coordinates(clustdat)[, 2] - 50000, st_coordinates(clustdat)[, 2] + 50000),
+             mt_track_id(.) %in% activetags)
+    nearpoints50 <- neartags2[st_contains(rad50, neartags2) %>% unlist,]
+    nearbirds50 <- mt_track_id(nearpoints50) %>%
+      unique() %>% length()
+    
+    # Use this subset for 25km buffer:
+    rad25 <- st_buffer(clustdat, dist = 25000)
+    nearpoints25 <- neartags2[st_contains(rad25, neartags2) %>% unlist,]
+    nearbirds25 <- mt_track_id(nearpoints25) %>%
+      unique() %>% length()
+    
+    clustertable$within_50k[k] <- nearbirds50
+    clustertable$within_25k[k] <- nearbirds25
+    
+    # Generate night-distance data -------------------------------------
+    
+    clustpoints <- data %>% 
+      filter(
+        between(mt_time(.),
+          clustdat$firstdatetime - days(1),
+          clustdat$lastdatetime),
+        mt_track_id(.) %in% strsplit(clustdat$birds, split = ", ") %>% unlist())
+    atevent <- clustpoints %>% # select only cluster points
+      filter(xy.clust == clustertable$xy.clust[k])
+    
+    # Extract the days on which each bird was at the event:
+    daysbybird <- table(mt_track_id(atevent), as_date(mt_time(atevent))) %>%
+      as.data.frame()
+    nightdat <- atevent[0,]
+        # Loop through to create nightdist dataset:
+    for (m in 1:nrow(daysbybird)) {
+      newdat <- clustpoints %>%
+        filter(mt_track_id(.) == daysbybird[m, 1],
+               date(mt_time(.)) == as_date(daysbybird[m, 2]))
+      nightdat <- mt_stack(nightdat, newdat, .track_combine = "merge")
+    }
+    
+    nightdat %<>% mutate(day = case_when(
+        hour(mt_time(.)) > 21 | hour(mt_time(.)) < 3 ~ 0,
+        TRUE ~ 1
+      ))
+    if (sum(nightdat$day) != nrow(nightdat)) {
+      nightdists <- st_distance(
+        nightdat[nightdat$day == 1,],
+        nightdat[nightdat$day == 0,]
+      )
+      clustertable$nightdist_mean[k] <- mean(nightdists)
+      clustertable$nightdist_med[k] <- median(nightdists)
+      clustertable$nightdist_sd[k] <- sd(nightdists)
+    }
+
+  }
+
+    clustertable %<>% left_join(tempdat, by = "xy.clust")
+    logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
+  
+  # Fix to remove overwritten clusters from clustertable:
+  logger.trace(paste0("Removing clusters that have since been overwritten in the tagdata: ", 
                      toString(
-                       clustertable$xy.clust[which(clustertable$xy.clust %!in% clusteredTagData$xy.clust)]
+                       clustertable$xy.clust[which(clustertable$xy.clust %!in% data$xy.clust)]
                      )))
-  clustertable %<>% filter(
-    xy.clust %in% clusteredTagData$xy.clust
-  )
   
-  # Save clustertable as artefact
+  # Add clustercode:
+  clustertable %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
+  data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
+  
+  # Release outputs
   saveRDS(clustertable, file = appArtifactPath("clustertable.rds")) 
-  
-  
-  # Pass tag data onto next MoveApp
-  return(clusteredTagData)
+  return(data)
 }
+

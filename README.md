@@ -54,6 +54,10 @@ Please note: the geometry of the outputted clusters is determined by their **med
 
 `Behavioural Classification Clustering`: If the data has been processed by **Behavioural Classification for Vultures,** select this. If the data has not, do not select this - the clustering will be performed on all available data without behavioural classification.
 
+`Agglomerative Clustering Cut-Height`: The height at which to cut the dendrogram after each iterative clustering. `d = 500` is default.
+
+`Cluster ID Code`: An option string to append to the ID of clusters. For example, a clustercode of `abc` means that output clusters will be identified as `abc.1`, `abc.2`, and so on. This is useful if separate studies are being merged. Defaults to no clustercode.
+
 ### Most common errors
 
 -   Selecting a `Cluster Step` larger than the selected `Cluster Window` means data could be skipped between rolling-windows. For example, `Cluster Step = 7` but `Cluster Window = 7` means 5 days will be clustered and then the window will be increased by 7 days, skipping 2 days of data
