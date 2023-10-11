@@ -22,3 +22,10 @@ data/raw/Tanz_BUGGEDMONTH.rds
 data/raw/Tanzania_unclustered.rds
 data/raw/Tanzania_unclustered_newbirds.rds
 DBSCAN_testing.R
+RFunction_DEPRECATED.R
+cluster_sf.R
+app-configuration.json
+app-configuration.json
+.RDataTmp
+.env
+.env
