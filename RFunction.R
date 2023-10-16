@@ -78,15 +78,25 @@ rFunction <- function(data,
   #'  'clusterdate' parameter will define the final day of data we are currently clustering up to
   # -----------------------------------------------------------------
   
-  clusterdate <- ceiling_date(clusterstart, unit = "days")
+  clusterdate <- floor_date(clusterstart, unit = "days")
   
   # Set up the initial case, in which we have no roll-over of cluster data:
   clusterDataDwnld <- NULL
   tempclustertable <- NULL
+  laststep <- FALSE
   
   # Begin loop:
-  while (clusterdate <= ceiling_date(clusterend, unit = "days")) {
+  while (
+    #clusterdate < floor_date(clusterend, unit = "days") + days(clusterwindow)
+    laststep == FALSE # testing alternative 
+    ) {
     
+    # If we're on the final step, set the clusterdate equal to final day:
+    if (clusterdate >= floor_date(clusterend, unit = "days")) {
+      logger.trace(paste0("Current clusterdate ", as.Date(clusterdate), " is beyond final date. Assigning final date, ", as.Date(clusterend)))
+      clusterdate <- floor_date(clusterend, unit = "days")
+      laststep <- TRUE
+    }
 
     #' -----------------------------------------------------------------------
     #' 1. Data Setup and Import ----------------------------------------------
@@ -196,7 +206,7 @@ rFunction <- function(data,
   
     newclust <- clusts
     logger.trace(paste0(as.Date(clusterdate), 
-                        ":     ", 
+                        ":       ", 
                         nrow(newclust),
                         " new clusters generated"))
     
@@ -224,10 +234,18 @@ rFunction <- function(data,
         which(dists < 175, arr.ind = T, useNames = T)))
       closeClusterIndices$row <- rownames(dists)[closeClusterIndices$row]
       closeClusterIndices$col <-  colnames(dists)[closeClusterIndices$col]
-      matchingclustermap <- closeClusterIndices %>%
-        as.data.frame() %>% 
-        rename(existID = row,
-               updID = col)
+      
+      if (nrow(closeClusterIndices) > 0) {
+        matchingclustermap <- closeClusterIndices %>%
+          as.data.frame() %>% 
+          rename(existID = row,
+                 updID = col)
+      } else {
+        matchingclustermap <- data.frame(
+          existID = NULL, updID = NULL # nullify if no clusters matched
+        )
+      }
+
     }
     
     
@@ -302,7 +320,7 @@ rFunction <- function(data,
       }
     }
     
-    logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(matchingclustermap), "  matched to existing clusters"))
+    logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(matchingclustermap), "  matched to existing clusters"))
     
     
     # -----------------------------------------------
@@ -322,7 +340,7 @@ rFunction <- function(data,
     } else {
       existclustermap <- data.frame(existID = NULL, upID = NULL)
     }
-    logger.trace(paste0(as.Date(clusterdate), ":     ", nrow(existclustermap), "  clusters not matched"))
+    logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(existclustermap), "  clusters not matched"))
     
     
     # -----------------------------------------------
@@ -453,16 +471,20 @@ rFunction <- function(data,
       }
     }
     
-    # Log progress:
-    logger.trace(paste0(as.Date(clusterdate), ":     Increasing clusterdate to ", clusterdate + days(clusterstep)))
 
     
     # ----------------------------------------------------
     # 7. Generate output & move on rolling window -----------
     
+    # Log progress:
+    
     logger.trace(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(clusterDataDwnld), " cumulative clusters generated"))
-    logger.trace(paste0(as.Date(clusterdate), ":     Increasing clusterdate to ", clusterdate + days(clusterstep)))
-    clusterdate <- clusterdate + days(clusterstep)
+    if (laststep == FALSE) {
+      logger.trace(paste0(as.Date(clusterdate), ": Increasing clusterdate to ", clusterdate + days(clusterstep)))
+      clusterdate <- clusterdate + days(clusterstep)
+    }
+    
+
   
     # End of clustering loop ---------
     }
@@ -523,6 +545,18 @@ rFunction <- function(data,
   # Generate distance data:
   logger.trace(paste0("Generating distance data for all clusters. This may run slowly"))
 
+
+  # CLUSTERTABLE LOOPING -------------------------------------------
+  
+  # Convert data to matrix format for easy searching
+  mat.data <- data %>%
+    as.data.frame() %>%
+    rename(trackID = mt_track_id_column(data),
+           timestamp = mt_time_column(data)) %>%
+    dplyr::select(all_of(c("trackID", "timestamp", "xy.clust"))) %>%
+    cbind(st_coordinates(data)) %>%
+    as.matrix()
+  
   tempdat <- NULL
   for (k in 1:nrow(clustertable)) {
     
@@ -701,7 +735,8 @@ rFunction <- function(data,
 
   }
 
-    clustertable %<>% left_join(tempdat, by = "xy.clust")
+    clustertable %<>% left_join(tempdat, by = "xy.clust") %>%
+      as.data.frame() # temporarily convert to DF to add clustercodes
     logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
   
   # Fix to remove overwritten clusters from clustertable:
@@ -711,7 +746,8 @@ rFunction <- function(data,
                      )))
   
   # Add clustercode:
-  clustertable %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
+  clustertable %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)) %>%
+    mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
   data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
   
   # Release outputs
