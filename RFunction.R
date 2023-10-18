@@ -499,6 +499,7 @@ rFunction <- function(data,
   # 8. Generate FULL clustertable ----------------------
   # This will contain output cluster information
   
+
   tablestarttime <- Sys.time()
   clustertable <- data %>%
     filter(!is.na(xy.clust)) %>%
@@ -556,15 +557,22 @@ rFunction <- function(data,
 
   # CLUSTERTABLE LOOPING -------------------------------------------
   
-  # Convert data to matrix format for easy searching
+  # Convert data to sf format for easier filtering
   mat.data <- data %>%
+    mutate(ID = mt_track_id(.),
+           timestamp = mt_time(.)) %>%
     as.data.frame() %>%
-    rename(trackID = mt_track_id_column(data),
-           timestamp = mt_time_column(data)) %>%
-    dplyr::select(all_of(c("trackID", "timestamp", "xy.clust"))) %>%
-    cbind(st_coordinates(data)) %>%
-    as.matrix()
-  
+    select(any_of(c("ID",
+             "geometry",
+             "timestamp",
+             "hour",
+             "gap_mins",
+             "dist_m",
+             "behav",
+             "xy.clust"))) %>%
+    st_as_sf(crs = st_crs(data))
+    
+    
   tempdat <- NULL
   for (k in 1:nrow(clustertable)) {
     
@@ -588,25 +596,53 @@ rFunction <- function(data,
     
     # Generate final median location:
     clustertable$geometry[k] <- calcGMedianSF(clustdat)
+    clust <- clustertable[k,]
     
-    # Generate revisit data:
+    # # Generate revisit data:
+    # birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
+    # tempdat <- data %>%
+    #   ungroup() %>%
+    #   filter(between(
+    #     mt_time(.), 
+    #     clustertable$firstdatetime[k],
+    #     clustertable$lastdatetime[k]),
+    #   mt_track_id(.) %in% birdsinclust) %>%
+    #   mutate(incluster = ifelse(xy.clust != clustertable$xy.clust[k] | is.na(xy.clust), 0, 1),
+    #          indaycluster = ifelse(incluster == 1 & between(hour(mt_time(.)), 10, 15), 1, 0)) %>%
+    #   mutate(temptag = mt_track_id(.),
+    #          tempdate = ifelse(incluster == 0, NA, as_date(mt_time(.)))) %>%
+    #   st_drop_geometry() %>%
+    #   as.data.frame() %>%
+    #   group_by(temptag) %>%
+    #   summarise(
+    #     xy.clust = clustertable$xy.clust[k],
+    #     visitsinevent = sum(rle(incluster)$values),
+    #     dayvisits = sum(rle(indaycluster)$values),
+    #     dayvisits = pmin(dayvisits, visitsinevent), # Fix case where dayvisits > totalvisits 
+    #     ndays = n_distinct(tempdate),
+    #     meanvisits = visitsinevent / ndays,
+    #     meandayvisits = dayvisits / ndays) %>%
+    #   # Take means across birds:
+    #   summarise(xy.clust = clustertable$xy.clust[k],
+    #             #visitsinevent_tot = sum(visitsinevent),
+    #             visitsinevent_mean_pday = mean(meanvisits),
+    #             #dayvisits_tot = sum(dayvisits),
+    #             dayvisits_mean_pday = mean(meandayvisits)) %>%
+    #   bind_rows(tempdat, .)
+    
+    # Updated revisit calculation:
     birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
-    tempdat <- data %>%
+    tempdat <- mat.data %>%
       ungroup() %>%
-      filter(between(
-        mt_time(.), 
-        clustertable$firstdatetime[k],
-        clustertable$lastdatetime[k]),
-      mt_track_id(.) %in% birdsinclust) %>%
+      filter(between(timestamp, clustertable$firstdatetime[k], clustertable$lastdatetime[k]),
+             ID %in% birdsinclust) %>%
       mutate(incluster = ifelse(xy.clust != clustertable$xy.clust[k] | is.na(xy.clust), 0, 1),
-             indaycluster = ifelse(incluster == 1 & between(hour(mt_time(.)), 10, 15), 1, 0)) %>%
-      mutate(temptag = mt_track_id(.),
-             tempdate = ifelse(incluster == 0, NA, as_date(mt_time(.)))) %>%
-      st_drop_geometry() %>%
-      as.data.frame() %>%
-      group_by(temptag) %>%
+             indaycluster = ifelse(incluster == 1 & between(hour, 10, 15), 1, 0),
+             
+             # Isolatethe dates on which each bird is present:
+             tempdate = ifelse(incluster == 0, NA, as_date(timestamp))) %>%
       summarise(
-        xy.clust = clustertable$xy.clust[k],
+        xy.clust = clust$xy.clust,
         visitsinevent = sum(rle(incluster)$values),
         dayvisits = sum(rle(indaycluster)$values),
         dayvisits = pmin(dayvisits, visitsinevent), # Fix case where dayvisits > totalvisits 
@@ -614,62 +650,64 @@ rFunction <- function(data,
         meanvisits = visitsinevent / ndays,
         meandayvisits = dayvisits / ndays) %>%
       # Take means across birds:
-      summarise(xy.clust = clustertable$xy.clust[k],
+      summarise(xy.clust = clust$xy.clust,
                 #visitsinevent_tot = sum(visitsinevent),
                 visitsinevent_mean_pday = mean(meanvisits),
                 #dayvisits_tot = sum(dayvisits),
                 dayvisits_mean_pday = mean(meandayvisits)) %>%
       bind_rows(tempdat, .)
+      
+      
     
     # Generate data on nearest birds/ids -----------------------
     
-    clustdat <- clustertable[k,]
     locavailable <- FALSE
     while (locavailable == FALSE) {
       # Filter to time window of cluster and remove all birds in the cluster (travelling + feeding):
-      neartags <- data %>% 
-        filter(between(timestamp, clustdat$firstdatetime, clustdat$lastdatetime),
-               individual_local_identifier %!in% unlist(stringr::str_split(clustdat$birds, pattern = ", "))
+      neartags <- mat.data %>% 
+        filter(between(timestamp, clust$firstdatetime, clust$lastdatetime),
+               ID %!in% unlist(stringr::str_split(clust$birds, pattern = ", "))
         )
-      if (nrow(neartags) != 0) {
+      if (nrow(neartags) != 0) { # we have at least 1 location to use
         locavailable <- TRUE
       } else {
         # If no locations in window, we extend it 1hr each way and check again
-        clustdat$firstdatetime <- clustdat$firstdatetime - lubridate::hours(1)
-        clustdat$lastdatetime <- clustdat$lastdatetime + lubridate::hours(1)
+        clust$firstdatetime <- clust$firstdatetime - lubridate::hours(1)
+        clust$lastdatetime <- clust$lastdatetime + lubridate::hours(1)
       }
     }
     # Get the nearest location
-    dist <- neartags[st_nearest_feature(st_geometry(clustdat),
+    dist <- neartags[st_nearest_feature(st_geometry(clust),
                                              neartags),] %>%
-      st_distance(clustdat)
+      st_distance(clust)
     clustertable$dist_to_bird_km[k] <- units::set_units(dist, "metres") %>%
       units::drop_units() %>%
       divide_by(1000)
     
     # Identify active tags
-    activetags <- data %>% 
-      filter(between(mt_time(.), clustdat$firstdatetime, clustdat$lastdatetime)) %>%
-      mt_track_id(.) %>%
+    activetags <- mat.data %>% 
+      filter(between(timestamp, clust$firstdatetime, clust$lastdatetime)) %>%
+      select(ID) %>%
       unique()
+
     
     # Start with 50km buffer:
-    rad50 <- st_buffer(clustdat, dist = 50000)
-    neartags2 <- data %>% 
+    rad50 <- st_buffer(clust, dist = 50000)
+    neartags2 <- mat.data %>% 
       mutate(X = st_coordinates(.)[, 1],
              Y = st_coordinates(.)[, 2]) %>%
-      filter(between(mt_time(.), clustdat$lastdatetime - days(30), clustdat$lastdatetime),
-             between(X, st_coordinates(clustdat)[, 1] - 50000, st_coordinates(clustdat)[, 1] + 50000),
-             between(Y, st_coordinates(clustdat)[, 2] - 50000, st_coordinates(clustdat)[, 2] + 50000),
-             mt_track_id(.) %in% activetags)
+      filter(between(timestamp, clust$lastdatetime - days(30), clust$lastdatetime),
+             between(X, st_coordinates(clust)[, 1] - 50000, st_coordinates(clust)[, 1] + 50000),
+             between(Y, st_coordinates(clust)[, 2] - 50000, st_coordinates(clust)[, 2] + 50000),
+             ID %in% activetags)
     nearpoints50 <- neartags2[st_contains(rad50, neartags2) %>% unlist,]
-    nearbirds50 <- mt_track_id(nearpoints50) %>%
+    nearbirds50 <- select(nearpoints50, "ID") %>%
       unique() %>% length()
     
     # Use this subset for 25km buffer:
-    rad25 <- st_buffer(clustdat, dist = 25000)
-    nearpoints25 <- neartags2[st_contains(rad25, neartags2) %>% unlist,]
-    nearbirds25 <- mt_track_id(nearpoints25) %>%
+    rad25 <- st_buffer(clust, dist = 25000)
+    nearpoints25 <- neartags2[st_contains(rad25, nearpoints50) %>% unlist,]
+    nearbirds25 <- select(nearpoints25, "ID") %>%
       unique() %>% length()
     
     clustertable$within_50k[k] <- nearbirds50
@@ -679,23 +717,28 @@ rFunction <- function(data,
     
 
     # Isolate locations of cluster-involved birds over its full timespan
-    clustpoints <- data %>% 
+    clustpoints <- mat.data %>% 
       filter(
-        between(mt_time(.),
-          clustdat$firstdatetime - days(1),
-          clustdat$lastdatetime),
-        mt_track_id(.) %in% (strsplit(clustdat$birds, split = ", ") %>% unlist()))
+        between(timestamp,
+          clust$firstdatetime - days(1),
+          clust$lastdatetime),
+        ID %in% (strsplit(clust$birds, split = ", ") %>% unlist())) %>%
+      mutate(day = case_when(
+        hour > 21 | hour < 3 ~ 0,
+        TRUE ~ 1
+      ))
     atevent <- clustpoints %>% # select only inside-cluster points
-      filter(xy.clust == clustertable$xy.clust[k])
+      filter(xy.clust == clust$xy.clust)
     
     # Extract the days on which each bird was at the event:
-    daysbybird <- table(mt_track_id(atevent), as_date(mt_time(atevent))) %>%
+    daysbybird <- table(atevent$ID, as_date(atevent$timestamp)) %>%
       as.data.frame() %>%
       filter(Freq > 0)
     nightdat <- atevent[0,]
         # Loop through to create nightdist dataset:
     
     nightdist_temp <- data.frame(id = unique(daysbybird$Var1), nightdist_mean = NA, nightdist_med = NA, nightdist_sd = NA)
+    
     
     # Loop by bird to get individual distances
     for (j in 1:length(unique(daysbybird$Var1))) {
@@ -704,15 +747,13 @@ rFunction <- function(data,
       
       for (m in 1:nrow(daysbybird_temp)) {
         newdat <- clustpoints %>%
-          filter(mt_track_id(.) == daysbybird_temp[m, 1],
-                 date(mt_time(.)) == as_date(daysbybird_temp[m, 2]))
-        nightdat <- mt_stack(nightdat, newdat, .track_combine = "merge")
+          filter(ID == daysbybird_temp[m, 1],
+                 date(timestamp) == as_date(daysbybird_temp[m, 2]))
+        
+        nightdat <- rbind(nightdat, newdat)
       }
       
-      nightdat %<>% mutate(day = case_when(
-        hour(mt_time(.)) > 21 | hour(mt_time(.)) < 3 ~ 0,
-        TRUE ~ 1
-      ))
+      
       if (sum(nightdat$day) != nrow(nightdat)) {
         nightdists <- st_distance(
           nightdat[nightdat$day == 1,],
@@ -722,8 +763,9 @@ rFunction <- function(data,
         nightdist_temp$nightdist_med[j] <- median(nightdists, na.rm = T)
         nightdist_temp$nightdist_sd[j] <- sd(nightdists, na.rm = T)
       }
+      
     }
-    
+
 
     # Find mean of by-bird operations and add to clustertable
     clustertable$nightdist_mean[k] <- mean(nightdist_temp$nightdist_mean, na.rm = T)
@@ -743,13 +785,13 @@ rFunction <- function(data,
       nightdat <- clustpoints %>%
         filter(
           # Case 1: Day before arrival, late at night
-          (date(mt_time(.)) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
-               (hour(mt_time(.)) > 21) &
-               (mt_track_id(.) == firstarrivals$Var1[m]) |
+          (date(timestamp) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
+               (hour > 21) &
+               (ID == firstarrivals$Var1[m]) |
             # Case 2: day of arrival, early morning
-          (date(mt_time(.)) == as_date(toString(firstarrivals$Var2[m]))) &
-           (hour(mt_time(.)) < 5) &
-           (mt_track_id(.) == firstarrivals$Var1[m])
+          (date(timestamp) == as_date(toString(firstarrivals$Var2[m]))) &
+           (hour < 5) &
+           (ID == firstarrivals$Var1[m])
           )
       
       arrivaldists <- st_distance(nightdat, clustdat)
@@ -759,21 +801,18 @@ rFunction <- function(data,
     }
     
     nightbefore <- clustpoints %>%
-      filter(between(mt_time(.),
-                     clustdat$firstdatetime - days(1),
-                     clustdat$lastdatetime
+      filter(between(timestamp,
+                     clust$firstdatetime - days(1),
+                     clust$lastdatetime
                      ))
-    
-    
-    
-
   }
+  
+  
   tableendtime <- Sys.time()
   logger.trace(paste0("Clustertable generation completed. Time taken: ", 
                       difftime(tableendtime, tablestarttime, units = "mins"), " mins."))
-  
 
-    clustertable %<>% left_join(tempdat, by = "xy.clust") %>%
+    clustertable %<>% left_join(st_drop_geometry(tempdat), by = "xy.clust") %>%
       as.data.frame() # temporarily convert to DF to add clustercodes
     logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
   
