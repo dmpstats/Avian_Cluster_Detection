@@ -42,25 +42,30 @@ rFunction <- function(data,
     clustercode <- ""
   }
   
-  # Check suitability of inputs
+  # Check suitability of start/end inputs
   if(!is.instant(as.Date(clusterstart)) | is.null(clusterstart)) {
     logger.error(paste0("Start date of clustering ", clusterstart, " is not a valid date Defaulting to start date 2 weeks before final date."))
     clusterstart <- max(mt_time(data), na.rm = TRUE) - days(14)
   }
-  
-  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
-    logger.fatal("Classified behaviour column 'behav' is not contained by input data. Unable to perform clustering. Please use classification MoveApp prior to this stage in the workflow")
-    stop()
-  }
-  
   if(!is.instant(as.Date(clusterend)) | is.null(clusterend)) {
     logger.error(paste0("End date of clustering ", clusterend, " is not a valid date Defaulting to end date as most recent timestamp."))
     clusterend <- max(mt_time(data), na.rm = TRUE)
   }
   
+  # Check behaviour present, if needed
+  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
+    logger.fatal("Classified behaviour column 'behav' is not contained by input data. Unable to perform clustering. Please use classification MoveApp prior to this stage in the workflow")
+    stop()
+  }
+  
+  # Check if sunset columns are present
+  if ("sunset_timestamp" %in% colnames(data)) {
+    suntimes <- TRUE
+  } else {
+    suntimes <- FALSE
+  }
   
   logger.info(paste0("Clustering between ", clusterstart, " and ", clusterend))
-  
   
   # Filter to relevant time window for overall clustering:
   clusterstart %<>% as_date()
@@ -69,28 +74,23 @@ rFunction <- function(data,
     filter(between(mt_time(data), clusterstart - days(clusterwindow), clusterend + days(1)))
   
   
-  
   # ------------------------------------------------------------------
   # Clustering Loop
   #'  Operate on a rolling-window basis starting from clusterstart
   #'  We increment by clusterstep (in days) and re-cluster until we reach the clusterend
   #'  
   #'  'clusterdate' parameter will define the final day of data we are currently clustering up to
-  # -----------------------------------------------------------------
-  
-  clusterdate <- floor_date(clusterstart, unit = "days")
+
   
   # Set up the initial case, in which we have no roll-over of cluster data:
+  clusterdate <- floor_date(clusterstart, unit = "days")
   clusterDataDwnld <- NULL
   tempclustertable <- NULL
   laststep <- FALSE
   rollingstarttime <- Sys.time()
   
   # Begin loop:
-  while (
-    #clusterdate < floor_date(clusterend, unit = "days") + days(clusterwindow)
-    laststep == FALSE # testing alternative 
-    ) {
+  while (laststep == FALSE) {
     
     
     # If we're on the final step, set the clusterdate equal to final day:
@@ -103,7 +103,7 @@ rFunction <- function(data,
     #' -----------------------------------------------------------------------
     #' 1. Data Setup and Import ----------------------------------------------
     #'  Here, filter to the relevant window and import
-    #'  data from the last rolling-window (if available)
+    #'  data from the previous rolling-window (if available)
     
     # Import cluster data from previous run
     # This will contain only the key information for the clustering rolling-window 
@@ -119,16 +119,14 @@ rFunction <- function(data,
                                      clusterdate - days(clusterwindow), 
                                      clusterdate 
                              ))
-    
-    skipToNext <- FALSE # Determines whether to jump this clusterstep
+    skipToNext <- FALSE # Determines whether to jump over this clusterstep
     
     # Check that there is enough tracking data to cluster, and skip if not:
     if (nrow(clusteringData) < 3) {
       logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough data within clustering period"))
       skipToNext <- TRUE}
     
-    # And if using the behavioural classification system, 
-    # check there is enough non-travelling behaviour:
+    # And if using the behavioural classification system, check there is enough non-travelling behaviour:
     if (behavsystem == TRUE) {
       if (sum(clusteringData$behav != "STravelling") < 2) { 
         logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough stationary behaviour within clustering period"))
@@ -148,13 +146,14 @@ rFunction <- function(data,
     # ----------------------------------------------------------------------
     #' 2. Perform Clustering ----------------------------------------------
     #' Now that we know there is enough data, generate the new clusters
-    #' 
 
     
-    # If using behavioural classification, filter to stationary behaaviours:
-    if (behavsystem == TRUE) {clusterpoints <- filter(clusteringData,
-                                                      behav %!in% c("STravelling", "Unknown"))
-    } else {clusterpoints <- clusteringData} 
+    # If using behavioural classification, filter to stationary behaviours:
+    if (behavsystem == TRUE) {
+      clusterpoints <- filter(clusteringData, behav %!in% c("STravelling", "Unknown"))
+    } else {
+      clusterpoints <- clusteringData
+      } 
     
     logger.trace(paste0(as.Date(clusterdate), ":     Creating new clusters for ", nrow(clusterpoints), " locations"))
     
@@ -165,7 +164,7 @@ rFunction <- function(data,
       Y = st_coordinates(.)[, 2]
     )
     
-    # Build distance matrix (no SF method):
+    # Build distance matrix (no SF method available for the hclust step):
     mdist <- dist(cbind(clusterpoints$X, clusterpoints$Y))
     hc <- hclust(as.dist(mdist), method = "complete")
     
@@ -178,8 +177,10 @@ rFunction <- function(data,
     genclustertable %<>% filter(clust %!in% cid)
     
     
+    # -----------------------------------------------------------------
     # Append cluster data ---------------------------------------------
     # Generate a median location for each centroid:
+    
     clusts <- genclustertable %>%
       group_by(clust) %>%
       summarise(geometry = st_combine(geometry))
@@ -197,13 +198,10 @@ rFunction <- function(data,
     xydata <- clusterpoints %>% ungroup() %>%
       mutate(xy.clust = paste0("up", clust)) %>%
       dplyr::select(-clust) %>%
-      
-      # Remove the non-significant clusters:
       mutate(xy.clust = if_else(xy.clust %in% unique(clusts$xy.clust), xy.clust, "upNA"))
     
     
-
-    # -----------------------------------------------
+    # ----------------------------------------------------
     # 3. Identify Matching Clusters ----------------------
   
     newclust <- clusts
@@ -220,7 +218,6 @@ rFunction <- function(data,
       }
       
     } else {
-
       existingclust <- clusterDataDwnld %>%
         filter(lastdatetime + days(clustexpiration) > clusterdate - days(clusterwindow)) %>%
         arrange(xy.clust) 
@@ -247,7 +244,6 @@ rFunction <- function(data,
           existID = NULL, updID = NULL # nullify if no clusters matched
         )
       }
-
     }
     
     
@@ -444,7 +440,6 @@ rFunction <- function(data,
       }
       clustertable_update <- tempclusts
     } else {
-      
       # If impossible (i.e. no clusters exist), nullify this
       clustertable_update <- NULL
     }
@@ -479,15 +474,12 @@ rFunction <- function(data,
     # 7. Generate output & move on rolling window -----------
     
     # Log progress:
-    
     logger.trace(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(clusterDataDwnld), " cumulative clusters generated"))
     if (laststep == FALSE) {
       logger.trace(paste0(as.Date(clusterdate), ": Increasing clusterdate to ", clusterdate + days(clusterstep)))
       clusterdate <- clusterdate + days(clusterstep)
     }
     
-
-  
     # End of clustering loop ---------
   }
   rollingendtime <- Sys.time()
@@ -537,6 +529,7 @@ rFunction <- function(data,
               SRoosting = sum(behav == "SRoosting"),
               SResting = sum(behav == "SResting"),
 
+              # Cols to be filled in loop below:
               DistMedian = NA,
               DistSD = NA,
               dist_to_bird_km = NA,
@@ -569,6 +562,8 @@ rFunction <- function(data,
              "gap_mins",
              "dist_m",
              "behav",
+             "sunrise_timestamp",
+             "sunset_timestamp",
              "xy.clust"))) %>%
     st_as_sf(crs = st_crs(data))
     
@@ -583,7 +578,7 @@ rFunction <- function(data,
       st_cast("POINT") 
     dists <- clustdat %>%
       st_distance() %>% 
-      units::set_units("metres") %>% # to be safe
+      units::set_units("metres") %>%
       units::drop_units()
     
     # Median and SD distance between points:
@@ -598,39 +593,8 @@ rFunction <- function(data,
     clustertable$geometry[k] <- calcGMedianSF(clustdat)
     clust <- clustertable[k,]
     
-    # # Generate revisit data:
-    # birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
-    # tempdat <- data %>%
-    #   ungroup() %>%
-    #   filter(between(
-    #     mt_time(.), 
-    #     clustertable$firstdatetime[k],
-    #     clustertable$lastdatetime[k]),
-    #   mt_track_id(.) %in% birdsinclust) %>%
-    #   mutate(incluster = ifelse(xy.clust != clustertable$xy.clust[k] | is.na(xy.clust), 0, 1),
-    #          indaycluster = ifelse(incluster == 1 & between(hour(mt_time(.)), 10, 15), 1, 0)) %>%
-    #   mutate(temptag = mt_track_id(.),
-    #          tempdate = ifelse(incluster == 0, NA, as_date(mt_time(.)))) %>%
-    #   st_drop_geometry() %>%
-    #   as.data.frame() %>%
-    #   group_by(temptag) %>%
-    #   summarise(
-    #     xy.clust = clustertable$xy.clust[k],
-    #     visitsinevent = sum(rle(incluster)$values),
-    #     dayvisits = sum(rle(indaycluster)$values),
-    #     dayvisits = pmin(dayvisits, visitsinevent), # Fix case where dayvisits > totalvisits 
-    #     ndays = n_distinct(tempdate),
-    #     meanvisits = visitsinevent / ndays,
-    #     meandayvisits = dayvisits / ndays) %>%
-    #   # Take means across birds:
-    #   summarise(xy.clust = clustertable$xy.clust[k],
-    #             #visitsinevent_tot = sum(visitsinevent),
-    #             visitsinevent_mean_pday = mean(meanvisits),
-    #             #dayvisits_tot = sum(dayvisits),
-    #             dayvisits_mean_pday = mean(meandayvisits)) %>%
-    #   bind_rows(tempdat, .)
+    # Generate revisit data -------------------------------------------
     
-    # Updated revisit calculation:
     birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
     tempdat <- mat.data %>%
       ungroup() %>%
@@ -656,7 +620,6 @@ rFunction <- function(data,
                 #dayvisits_tot = sum(dayvisits),
                 dayvisits_mean_pday = mean(meandayvisits)) %>%
       bind_rows(tempdat, .)
-      
       
     
     # Generate data on nearest birds/ids -----------------------
@@ -690,8 +653,7 @@ rFunction <- function(data,
       select(ID) %>%
       unique()
 
-    
-    # Start with 50km buffer:
+    # Start with 50km buffer to speed up filtering:
     rad50 <- st_buffer(clust, dist = 50000)
     neartags2 <- mat.data %>% 
       mutate(X = st_coordinates(.)[, 1],
@@ -713,20 +675,34 @@ rFunction <- function(data,
     clustertable$within_50k[k] <- nearbirds50
     clustertable$within_25k[k] <- nearbirds25
     
+    
     # Generate night-distance data -------------------------------------
     
-
     # Isolate locations of cluster-involved birds over its full timespan
     clustpoints <- mat.data %>% 
       filter(
         between(timestamp,
           clust$firstdatetime - days(1),
           clust$lastdatetime),
-        ID %in% (strsplit(clust$birds, split = ", ") %>% unlist())) %>%
-      mutate(day = case_when(
-        hour > 21 | hour < 3 ~ 0,
+        ID %in% (strsplit(clust$birds, split = ", ") %>% unlist())) 
+    
+
+    
+    if (suntimes == TRUE) {
+      clustpoints %<>% mutate(
+        day = case_when(
+          between(timestamp,
+                sunrise_timestamp + hours(1),
+                sunset_timestamp - hours(1)) ~ 1,
+        TRUE ~ 0
+      ))
+    } else {
+      clustpoints %<>%       mutate(day = case_when(
+        hour > 21 | hour < 4 ~ 0,
         TRUE ~ 1
       ))
+    }
+    
     atevent <- clustpoints %>% # select only inside-cluster points
       filter(xy.clust == clust$xy.clust)
     
@@ -739,21 +715,20 @@ rFunction <- function(data,
     
     nightdist_temp <- data.frame(id = unique(daysbybird$Var1), nightdist_mean = NA, nightdist_med = NA, nightdist_sd = NA)
     
-    
     # Loop by bird to get individual distances
     for (j in 1:length(unique(daysbybird$Var1))) {
       id <- unique(daysbybird$Var1)[j] # extract id
       daysbybird_temp <- filter(daysbybird, Var1 == id) # extract visits data
       
+      # Acquire night locations:
       for (m in 1:nrow(daysbybird_temp)) {
         newdat <- clustpoints %>%
           filter(ID == daysbybird_temp[m, 1],
                  date(timestamp) == as_date(daysbybird_temp[m, 2]))
-        
         nightdat <- rbind(nightdat, newdat)
       }
       
-      
+      # Don't run this if all points are in daytime
       if (sum(nightdat$day) != nrow(nightdat)) {
         nightdists <- st_distance(
           nightdat[nightdat$day == 1,],
@@ -766,35 +741,55 @@ rFunction <- function(data,
       
     }
 
-
     # Find mean of by-bird operations and add to clustertable
     clustertable$nightdist_mean[k] <- mean(nightdist_temp$nightdist_mean, na.rm = T)
     clustertable$nightdist_med[k] <- mean(nightdist_temp$nightdist_med, na.rm = T)
     clustertable$nightdist_sd[k] <- mean(nightdist_temp$nightdist_sd, na.rm = T)
     
-    # Generate night-before distance data --------------------------
+    
+    # Generate night-before-arrival distance data --------------------------
     
     # Identify each ID's first date of arrival
     firstarrivals <- daysbybird %>%
       as.data.frame() %>%
-      group_by(Var2) %>%
+      group_by(Var1) %>%
       slice_min(order_by = Var2) %>%
       ungroup()
     
     for (m in nrow(firstarrivals)) {
-      nightdat <- clustpoints %>%
-        filter(
-          # Case 1: Day before arrival, late at night
-          (date(timestamp) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
-               (hour > 21) &
-               (ID == firstarrivals$Var1[m]) |
-            # Case 2: day of arrival, early morning
-          (date(timestamp) == as_date(toString(firstarrivals$Var2[m]))) &
-           (hour < 5) &
-           (ID == firstarrivals$Var1[m])
-          )
       
-      arrivaldists <- st_distance(nightdat, clustdat)
+
+      # If sunrise-sunset times available, use those
+      if (suntimes == TRUE) {
+        nightdat <- clustpoints %>% 
+          filter(
+            # Case 1: Day before arrival, late at night 
+            (date(timestamp) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
+              (day == 0) &
+              (hour > 12) &
+              (ID == firstarrivals$Var1[m]) |
+              # Case 2: Day of arrival, early morning
+              (date(timestamp) == as_date(toString(firstarrivals$Var2[m]))) &
+              (hour < 12) &
+              (day == 0) &
+              (ID == firstarrivals$Var1[m])
+          )
+      } else {
+        # Otherwise just use 9pm-5am
+        nightdat <- clustpoints %>%
+          filter(
+            # Case 1: Day before arrival, late at night
+            (date(timestamp) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
+              (hour > 21) &
+              (ID == firstarrivals$Var1[m]) |
+              # Case 2: day of arrival, early morning
+              (date(timestamp) == as_date(toString(firstarrivals$Var2[m]))) &
+              (hour < 5) &
+              (ID == firstarrivals$Var1[m])
+          )
+      }
+      
+      arrivaldists <- st_distance(nightdat, clust)
       clustertable$arrivaldist_mean[k] <- mean(arrivaldists, na.rm = T)
       clustertable$arrivaldist_med[k] <- median(arrivaldists, na.rm = T)
       
@@ -808,12 +803,13 @@ rFunction <- function(data,
   }
   
   
+  # Looping complete - log time and release outputs
   tableendtime <- Sys.time()
   logger.trace(paste0("Clustertable generation completed. Time taken: ", 
                       difftime(tableendtime, tablestarttime, units = "mins"), " mins."))
 
     clustertable %<>% left_join(st_drop_geometry(tempdat), by = "xy.clust") %>%
-      as.data.frame() # temporarily convert to DF to add clustercodes
+      as.data.frame() # temporarily convert to DF to add clustercodes (Move object creates errors)
     logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
   
   # Fix to remove overwritten clusters from clustertable:
