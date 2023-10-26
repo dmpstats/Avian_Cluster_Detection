@@ -650,7 +650,7 @@ rFunction <- function(data,
     # Identify active tags
     activetags <- mat.data %>% 
       filter(between(timestamp, clust$firstdatetime, clust$lastdatetime)) %>%
-      select(ID) %>%
+      .$ID %>%
       unique()
 
     # Start with 50km buffer to speed up filtering:
@@ -663,13 +663,15 @@ rFunction <- function(data,
              between(Y, st_coordinates(clust)[, 2] - 50000, st_coordinates(clust)[, 2] + 50000),
              ID %in% activetags)
     nearpoints50 <- neartags2[st_contains(rad50, neartags2) %>% unlist,]
-    nearbirds50 <- select(nearpoints50, "ID") %>%
+    nearbirds50 <- nearpoints50 %>%
+      .$ID %>%
       unique() %>% length()
     
     # Use this subset for 25km buffer:
     rad25 <- st_buffer(clust, dist = 25000)
     nearpoints25 <- neartags2[st_contains(rad25, nearpoints50) %>% unlist,]
-    nearbirds25 <- select(nearpoints25, "ID") %>%
+    nearbirds25 <- nearpoints25 %>%
+      .$ID %>%
       unique() %>% length()
     
     clustertable$within_50k[k] <- nearbirds50
