@@ -30,8 +30,8 @@ rFunction <- function(data,
                       d,
                       clustercode = "") {
   
-  # --------------------------------------------------------------
-  # Setup & Input Checks -----------------------------------------
+  #' --------------------------------------------------------------
+  # 0. Setup & Input Checks -----------------------------------------
 
   # Check clustercode
   if (clustercode != "") {
@@ -74,7 +74,7 @@ rFunction <- function(data,
     filter(between(mt_time(data), clusterstart - days(clusterwindow), clusterend + days(1)))
   
   
-  # ------------------------------------------------------------------
+  #' ------------------------------------------------------------------
   # Clustering Loop
   #'  Operate on a rolling-window basis starting from clusterstart
   #'  We increment by clusterstep (in days) and re-cluster until we reach the clusterend
@@ -143,8 +143,8 @@ rFunction <- function(data,
     
     
     
-    # ----------------------------------------------------------------------
-    #' 2. Perform Clustering ----------------------------------------------
+    #' ----------------------------------------------------------------------
+    # 2. Perform Clustering ----------------------------------------------
     #' Now that we know there is enough data, generate the new clusters
 
     
@@ -177,8 +177,8 @@ rFunction <- function(data,
     genclustertable %<>% filter(clust %!in% cid)
     
     
-    # -----------------------------------------------------------------
-    # Append cluster data ---------------------------------------------
+    #' -----------------------------------------------------------------
+    ## Append cluster data ---------------------------------------------
     # Generate a median location for each centroid:
     
     clusts <- genclustertable %>%
@@ -201,7 +201,7 @@ rFunction <- function(data,
       mutate(xy.clust = if_else(xy.clust %in% unique(clusts$xy.clust), xy.clust, "upNA"))
     
     
-    # ----------------------------------------------------
+    #' ----------------------------------------------------
     # 3. Identify Matching Clusters ----------------------
   
     newclust <- clusts
@@ -247,8 +247,8 @@ rFunction <- function(data,
     }
     
     
-    # -----------------------------------------------
-    # Merging Clusters: Case 1 ----------------------
+    #' -----------------------------------------------
+    ## Merging Clusters: Case 1 ----------------------
     #'
     #' Multiple old clusters -> 1 new cluster
     #' In this case, we want to re-allocate the constituent locations
@@ -288,8 +288,8 @@ rFunction <- function(data,
         }
       }
     
-    # -----------------------------------------------
-    # Merging Clusters: Case 2 ----------------------
+    #' -----------------------------------------------
+    ## Merging Clusters: Case 2 ----------------------
     #'
     #' 1 old cluster -> multiple new clusters
     #' In this case, we just want to keep the old cluster
@@ -321,8 +321,8 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(matchingclustermap), "  matched to existing clusters"))
     
     
-    # -----------------------------------------------
-    # Merging Clusters: Case 3 ----------------------
+    #' -----------------------------------------------
+    ## Merging Clusters: Case 3 ----------------------
     #'
     #' Pre-existing clusters with no  merges
 
@@ -341,8 +341,8 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(existclustermap), "  clusters not matched"))
     
     
-    # -----------------------------------------------
-    # Merging Clusters: Case 4 ----------------------
+    #' -----------------------------------------------
+    ## Merging Clusters: Case 4 ----------------------
     #'
     #' New clusters with no previous match (didn't previously exist)
     
@@ -364,7 +364,7 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(newclustermap), "  new clusters have no match"))
     
     
-    # ----------------------------------------------
+    #' ----------------------------------------------
     # 4. Perform Matching ----------------------------
     
     # Combine the three merge tables (and an option for NA clusters):
@@ -412,7 +412,7 @@ rFunction <- function(data,
       arrange(mt_track_id(.), mt_time(.)) # reorder
 
     
-    # ----------------------------------------------------
+    #' ----------------------------------------------------
     # 5. Create TEMPORARY clustertable ----------------------
     # This will contain only the essential information for
     # cluster-updating: location, time, clustID
@@ -445,7 +445,7 @@ rFunction <- function(data,
     }
     
     
-    # -----------------------------------------------------------------------
+    #' -----------------------------------------------------------------------
     # 6. Return other clusters to the dataset ----------------------------------
     logger.trace(paste0(as.Date(clusterdate), ":     Merging back into clusterDataDwnld"))
     
@@ -470,7 +470,7 @@ rFunction <- function(data,
     
 
     
-    # ----------------------------------------------------
+    #' ----------------------------------------------------
     # 7. Generate output & move on rolling window -----------
     
     # Log progress:
@@ -480,14 +480,14 @@ rFunction <- function(data,
       clusterdate <- clusterdate + days(clusterstep)
     }
     
-    # End of clustering loop ---------
+    # End of clustering loop
   }
   rollingendtime <- Sys.time()
   logger.trace(paste0("CLUSTERING COMPLETE. Time taken: ", 
                difftime(rollingendtime, rollingstarttime, units = "mins"),  " mins. Generating clustertable for all clusters"))
   
   
-  # ----------------------------------------------------
+  #' ----------------------------------------------------
   # 8. Generate FULL clustertable ----------------------
   # This will contain output cluster information
   
@@ -548,7 +548,7 @@ rFunction <- function(data,
   logger.trace(paste0("Generating distance data for all clusters. This may run slowly"))
 
 
-  # CLUSTERTABLE LOOPING -------------------------------------------
+  ## CLUSTERTABLE LOOPING -------------------------------------------
   
   # Convert data to sf format for easier filtering
   mat.data <- data %>%
@@ -593,7 +593,7 @@ rFunction <- function(data,
     clustertable$geometry[k] <- calcGMedianSF(clustdat)
     clust <- clustertable[k,]
     
-    # Generate revisit data -------------------------------------------
+    ### Generate revisit data -------------------------------------------
     
     birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
     tempdat <- mat.data %>%
@@ -622,7 +622,7 @@ rFunction <- function(data,
       bind_rows(tempdat, .)
       
     
-    # Generate data on nearest birds/ids -----------------------
+    ### Generate data on nearest birds/ids -----------------------
     
     locavailable <- FALSE
     while (locavailable == FALSE) {
@@ -676,7 +676,7 @@ rFunction <- function(data,
     clustertable$within_25k[k] <- nearbirds25
     
     
-    # Generate night-distance data -------------------------------------
+    ### Generate night-distance data -------------------------------------
     
     # Isolate locations of cluster-involved birds over its full timespan
     clustpoints <- mat.data %>% 
@@ -747,7 +747,7 @@ rFunction <- function(data,
     clustertable$nightdist_sd[k] <- mean(nightdist_temp$nightdist_sd, na.rm = T)
     
     
-    # Generate night-before-arrival distance data --------------------------
+    ### Generate night-before-arrival distance data --------------------------
     
     # Identify each ID's first date of arrival
     firstarrivals <- daysbybird %>%
@@ -801,6 +801,17 @@ rFunction <- function(data,
                      clust$lastdatetime
                      ))
   }
+  
+  
+  # Finally, remove 1-location clusters from tagdata and clustertable
+  rem <- clustertable$xy.clust[clustertable$Total == 1]
+  data %<>% mutate(
+    xy.clust = case_when(
+      xy.clust %in% rem ~ NA,
+      TRUE ~ xy.clust
+    )
+  )
+  clustertable %<>% filter(xy.clust %!in% rem)
   
   
   # Looping complete - log time and release outputs
