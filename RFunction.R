@@ -99,7 +99,8 @@ rFunction <- function(data,
       clusterdate <- floor_date(clusterend, unit = "days")
       laststep <- TRUE
     }
-
+    
+    
     #' -----------------------------------------------------------------------
     #' 1. Data Setup and Import ----------------------------------------------
     #'  Here, filter to the relevant window and import
@@ -546,6 +547,7 @@ rFunction <- function(data,
   
   # Generate distance data:
   logger.trace(paste0("Generating distance data for all clusters. This may run slowly"))
+  
 
 
   ## CLUSTERTABLE LOOPING -------------------------------------------
@@ -568,8 +570,18 @@ rFunction <- function(data,
     st_as_sf(crs = st_crs(data))
     
     
+  preptime <- 0
+  revisittime <- 0
+  neartime <- 0
+  nighttime <- 0
+  arrivtime <- 0
+  START <- Sys.time()
+  
   tempdat <- NULL
   for (k in 1:nrow(clustertable)) {
+    
+    
+    startprep <- Sys.time()
     
     if (mod(k, 100) == 1) {logger.trace(paste0("    ", round(100 * (k / nrow(clustertable)), 3), "% complete"))} # Log progress
     
@@ -593,7 +605,12 @@ rFunction <- function(data,
     clustertable$geometry[k] <- calcGMedianSF(clustdat)
     clust <- clustertable[k,]
     
+    endprep <- Sys.time()
+    preptime + difftime(endprep, startprep, units = "mins")  # TIMECHECK
+    
     ### Generate revisit data -------------------------------------------
+    
+    revisitstart <- Sys.time()
     
     birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
     tempdat <- mat.data %>%
@@ -621,8 +638,12 @@ rFunction <- function(data,
                 dayvisits_mean_pday = mean(meandayvisits)) %>%
       bind_rows(tempdat, .)
       
+    revisitend <- Sys.time()
+    revisittime + difftime(revisitend, revisitstart, units = "mins") # TIMECHECK
     
     ### Generate data on nearest birds/ids -----------------------
+    
+    nearstart <- Sys.time()
     
     locavailable <- FALSE
     while (locavailable == FALSE) {
@@ -635,8 +656,8 @@ rFunction <- function(data,
         locavailable <- TRUE
       } else {
         # If no locations in window, we extend it 1hr each way and check again
-        clust$firstdatetime <- clust$firstdatetime - lubridate::hours(1)
-        clust$lastdatetime <- clust$lastdatetime + lubridate::hours(1)
+        clust$firstdatetime <- clust$firstdatetime - lubridate::weeks(1)
+        clust$lastdatetime <- clust$lastdatetime + lubridate::weeks(1)
       }
     }
     # Get the nearest location
@@ -647,6 +668,9 @@ rFunction <- function(data,
       units::drop_units() %>%
       divide_by(1000)
     
+    # reset clust times
+    clust <- clustertable[k,]
+    
     # Identify active tags
     activetags <- mat.data %>% 
       filter(between(timestamp, clust$firstdatetime, clust$lastdatetime)) %>%
@@ -654,31 +678,41 @@ rFunction <- function(data,
       unique()
 
     # Start with 50km buffer to speed up filtering:
-    rad50 <- st_buffer(clust, dist = 50000)
     neartags2 <- mat.data %>% 
       mutate(X = st_coordinates(.)[, 1],
              Y = st_coordinates(.)[, 2]) %>%
-      filter(between(timestamp, clust$lastdatetime - days(30), clust$lastdatetime),
+      filter(between(timestamp, clust$firstdatetime - days(30), clust$lastdatetime),
              between(X, st_coordinates(clust)[, 1] - 50000, st_coordinates(clust)[, 1] + 50000),
              between(Y, st_coordinates(clust)[, 2] - 50000, st_coordinates(clust)[, 2] + 50000),
              ID %in% activetags)
+    
+    rad50 <- st_buffer(clust, dist = 50000)
     nearpoints50 <- neartags2[st_contains(rad50, neartags2) %>% unlist,]
     nearbirds50 <- nearpoints50 %>%
       .$ID %>%
-      unique() %>% length()
+      append(birdsinclust) %>% # fix to tags coming online halfway through clust
+      unique() %>% 
+      length()
     
     # Use this subset for 25km buffer:
     rad25 <- st_buffer(clust, dist = 25000)
     nearpoints25 <- neartags2[st_contains(rad25, nearpoints50) %>% unlist,]
     nearbirds25 <- nearpoints25 %>%
       .$ID %>%
-      unique() %>% length()
+      append(birdsinclust) %>%
+      unique() %>% 
+      length()
     
     clustertable$within_50k[k] <- nearbirds50
     clustertable$within_25k[k] <- nearbirds25
     
+    nearend <- Sys.time()
+    neartime <- neartime + difftime(nearend, nearstart, units = "mins") # TIMECHECK
     
+
     ### Generate night-distance data -------------------------------------
+    
+    nightstart <- Sys.time()
     
     # Isolate locations of cluster-involved birds over its full timespan
     clustpoints <- mat.data %>% 
@@ -689,7 +723,6 @@ rFunction <- function(data,
         ID %in% (strsplit(clust$birds, split = ", ") %>% unlist())) 
     
 
-    
     if (suntimes == TRUE) {
       clustpoints %<>% mutate(
         day = case_when(
@@ -735,7 +768,9 @@ rFunction <- function(data,
         nightdists <- st_distance(
           nightdat[nightdat$day == 1,],
           nightdat[nightdat$day == 0,]
-        ) %>% units::drop_units()
+        ) %>% 
+          units::drop_units() %>%
+          divide_by(1000)
         nightdist_temp$nightdist_mean[j] <- mean(nightdists, na.rm = T)
         nightdist_temp$nightdist_med[j] <- median(nightdists, na.rm = T)
         nightdist_temp$nightdist_sd[j] <- sd(nightdists, na.rm = T)
@@ -748,8 +783,13 @@ rFunction <- function(data,
     clustertable$nightdist_med[k] <- mean(nightdist_temp$nightdist_med, na.rm = T)
     clustertable$nightdist_sd[k] <- mean(nightdist_temp$nightdist_sd, na.rm = T)
     
+    nightend <- Sys.time()
+    nighttime <- nighttime + difftime(nightend, nightstart, units = "mins") # TIMECHECK
+    
     
     ### Generate night-before-arrival distance data --------------------------
+    
+    arrivstart <- Sys.time()
     
     # Identify each ID's first date of arrival
     firstarrivals <- daysbybird %>%
@@ -791,9 +831,11 @@ rFunction <- function(data,
           )
       }
       
-      arrivaldists <- st_distance(nightdat, clust)
+      arrivaldists <- st_distance(nightdat, clust) %>%
+        divide_by(1000)
       clustertable$arrivaldist_mean[k] <- mean(arrivaldists, na.rm = T)
       clustertable$arrivaldist_med[k] <- median(arrivaldists, na.rm = T)
+      
       
     }
     
@@ -802,7 +844,30 @@ rFunction <- function(data,
                      clust$firstdatetime - days(1),
                      clust$lastdatetime
                      ))
+    
+    arrivend <- Sys.time()
+    arrivtime <- arrivtime + difftime(arrivend, arrivstart, units = "mins") # TIMECHECK
+
   }
+  
+  END <- Sys.time()
+  TOTALRUN <- difftime(END, START, units = "mins") 
+  
+  logger.trace(cat(paste0(
+    "Clustertable Generation time-to-run [mins]:",
+    " Total Duration: ", 
+    TOTALRUN,
+    "\n   Prep: ", 
+    preptime, 
+    "\n   Revisits: ",
+    revisittime, 
+    "\n   Within 25/50k: ",
+    neartime,
+    "\n   Nightvisits: ",
+    nighttime, 
+    "\n   Arrival distances: ",
+    arrivtime
+  )))
   
   
   # Finally, remove 1-location clusters from tagdata and clustertable
@@ -839,5 +904,6 @@ rFunction <- function(data,
   # Release outputs
   saveRDS(clustertable, file = appArtifactPath("clustertable.rds")) 
   return(data)
+  
 }
 
