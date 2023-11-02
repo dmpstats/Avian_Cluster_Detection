@@ -612,31 +612,65 @@ rFunction <- function(data,
     
     revisitstart <- Sys.time()
     
-    birdsinclust <- strsplit(clustertable[k,]$birds, split = ", ") %>% unlist()
+    birdsinclust <- strsplit(clust$birds, split = ", ") %>% unlist()
+    
     tempdat <- mat.data %>%
       ungroup() %>%
-      filter(between(timestamp, clustertable$firstdatetime[k], clustertable$lastdatetime[k]),
+      
+      filter(between(timestamp, clust$firstdatetime, clust$lastdatetime),
              ID %in% birdsinclust) %>%
       mutate(incluster = ifelse(xy.clust != clustertable$xy.clust[k] | is.na(xy.clust), 0, 1),
-             indaycluster = ifelse(incluster == 1 & between(hour, 10, 15), 1, 0),
+             indaycluster = case_when(
+               
+               # Method for sunrise-sunset times:
+               suntimes == TRUE & incluster == 1 & between(timestamp, sunrise_timestamp, sunset_timestamp) ~ 1,
+
+               # Method for no sunset-sunrise times:
+               suntimes == FALSE & incluster == 1 & between(hour(timestamp), 10, 15) ~ 1,
+               
+               TRUE ~ 0
+             ),
              
-             # Isolatethe dates on which each bird is present:
-             tempdate = ifelse(incluster == 0, NA, as_date(timestamp))) %>%
+             # Isolate the dates on which each bird is present using temporary date col:
+             tempdate = ifelse(incluster == 0, NA, as_date(timestamp)),
+             tempdate2 = as_date(timestamp)) %>%
+      
+      group_by(ID, tempdate2) %>%
+      
       summarise(
         xy.clust = clust$xy.clust,
         visitsinevent = sum(rle(incluster)$values),
         dayvisits = sum(rle(indaycluster)$values),
         dayvisits = pmin(dayvisits, visitsinevent), # Fix case where dayvisits > totalvisits 
-        ndays = n_distinct(tempdate),
+        ndays = n_distinct(tempdate, na.rm = T), # needs NA so doesnt count these
         meanvisits = visitsinevent / ndays,
         meandayvisits = dayvisits / ndays) %>%
+      suppressMessages() %>%
+      ungroup() %>%
+      
+      group_by(ID) %>% # get mean daily visits per bird
       # Take means across birds:
-      summarise(xy.clust = clust$xy.clust,
-                #visitsinevent_tot = sum(visitsinevent),
-                visitsinevent_mean_pday = mean(meanvisits),
-                #dayvisits_tot = sum(dayvisits),
-                dayvisits_mean_pday = mean(meandayvisits)) %>%
+      summarise(xy.clust = xy.clust[1],
+                visitsinevent_mean_pday_pbird = mean(meanvisits, na.rm = TRUE),
+                dayvisits_mean_pday_pbird = mean(meandayvisits, na.rm = TRUE)) %>%
+      suppressMessages() %>%
+      # Take means across birds for whole cluster:
+      group_by(xy.clust) %>%
+      summarise(xy.clust = xy.clust[1],
+                visitsinevent_mean_pday = mean(visitsinevent_mean_pday_pbird),
+                dayvisits_mean_pday = mean(dayvisits_mean_pday_pbird)) %>%
+      suppressMessages() %>%
       bind_rows(tempdat, .)
+      
+      # select(-ID) %>%
+      # group_by(xy.clust) %>%
+      # # Take means across birds:
+      # summarise(xy.clust = clust$xy.clust,
+      #           #visitsinevent_tot = sum(visitsinevent),
+      #           visitsinevent_mean_pday = mean(meanvisits),
+      #           #dayvisits_tot = sum(dayvisits),
+      #           dayvisits_mean_pday = mean(meandayvisits)) %>%
+      # bind_rows(tempdat, .)
       
     revisitend <- Sys.time()
     revisittime + difftime(revisitend, revisitstart, units = "mins") # TIMECHECK
