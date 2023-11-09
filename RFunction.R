@@ -516,9 +516,6 @@ rFunction <- function(data,
               days = length(unique(date(datetime))),
               totalduration = (ceiling_date(lastdatetime, unit = "days") - floor_date(firstdatetime, unit = "days")) %>% as.integer(),
               daysempty = as.numeric(totalduration - days),
-              TimeTotal = sum(timediff_hrs, na.rm = T),
-              TimeDay = sum(timediff_hrs[hour > 5 & hour < 17], na.rm = T),
-              TimeFeed = sum(timediff_hrs[behav == "SFeeding"], na.rm = T),
               MedianHourFeed = median(hour[behav == "SFeeding"], na.rm = T),
               MedianHourDay = median(hour[hour > 5 & hour < 17], na.rm = T),
               
@@ -529,8 +526,39 @@ rFunction <- function(data,
               SFeeding = sum(behav == "SFeeding"),
               SRoosting = sum(behav == "SRoosting"),
               SResting = sum(behav == "SResting"),
-
+              
+              # Accelerometer calculations
+              med_var_x = case_when(
+                "var_acc_x" %in% colnames(data) ~ median(var_acc_x, na.rm = T),
+                TRUE ~ NA
+              ),
+              med_var_y = case_when(
+                "var_acc_y" %in% colnames(data) ~ median(var_acc_y, na.rm = T),
+                TRUE ~ NA
+              ),
+              med_var_z = case_when(
+                "var_acc_z" %in% colnames(data) ~ median(var_acc_z, na.rm = T),
+                TRUE ~ NA
+              ),
+              
+              sd_var_x = case_when(
+                "var_acc_x" %in% colnames(data) ~ sd(var_acc_x, na.rm = T),
+                TRUE ~ NA
+              ),
+              sd_var_y = case_when(
+                "var_acc_y" %in% colnames(data) ~ sd(var_acc_y, na.rm = T),
+                TRUE ~ NA
+              ),
+              sd_var_z = case_when(
+                "var_acc_z" %in% colnames(data) ~ sd(var_acc_z, na.rm = T),
+                TRUE ~ NA
+              ),
+              
               # Cols to be filled in loop below:
+              TimePerBird = NA,
+              TimePerBirdDay = NA,
+              TimePerBirdFeed = NA,
+              
               DistMedian = NA,
               DistSD = NA,
               dist_to_bird_km = NA,
@@ -557,15 +585,15 @@ rFunction <- function(data,
     mutate(ID = mt_track_id(.),
            timestamp = mt_time(.)) %>%
     as.data.frame() %>%
-    select(any_of(c("ID",
+    dplyr::select(any_of(c("ID",
              "geometry",
              "timestamp",
              "hour",
-             "gap_mins",
              "dist_m",
              "behav",
              "sunrise_timestamp",
              "sunset_timestamp",
+             "timediff_hrs",
              "xy.clust"))) %>%
     st_as_sf(crs = st_crs(data))
     
@@ -580,7 +608,7 @@ rFunction <- function(data,
   tempdat <- NULL
   for (k in 1:nrow(clustertable)) {
     
-    
+
     startprep <- Sys.time()
     
     if (mod(k, 100) == 1) {logger.trace(paste0("    ", round(100 * (k / nrow(clustertable)), 3), "% complete"))} # Log progress
@@ -608,11 +636,96 @@ rFunction <- function(data,
     endprep <- Sys.time()
     preptime + difftime(endprep, startprep, units = "mins")  # TIMECHECK
     
+    
+    ### Generate time-at-carcass data -----------------------------------
+    
+    birdsinclust <- strsplit(clust$birds, split = ", ") %>% unlist()
+    
+    # TimePerBird calculation:
+    clustpoints <- mat.data %>%
+      as.data.frame() %>%
+      filter(xy.clust == clust$xy.clust) 
+    birdvisits <- clustpoints %>%
+      group_by(ID, date(timestamp)) %>%
+      summarise(count = n(),
+                time_spent = sum(timediff_hrs)) %>%
+      group_by(ID) %>%
+      summarise(meanvisit = mean(time_spent)) %>%
+      
+      # Across all birds:
+      ungroup() %>%
+      summarise(timespent = mean(meanvisit)) %>%
+      suppressMessages()
+    
+    # TimePerBirdDay calculation:
+    if ("sunrise_timestamp" %in% colnames(mat.data)) {
+      clustpoints_daytime <- clustpoints %>% filter(
+        between(timestamp, sunrise_timestamp, sunset_timestamp)
+      )
+    } else {
+        clustpoints_daytime <- clustpoints %>% filter(
+          between(hour(timestamp), 5, 17)
+        )
+      }
+
+    birdvisits_daytime <- clustpoints_daytime %>%
+      group_by(ID, date(timestamp)) %>%
+      summarise(count = n(),
+                time_spent = sum(timediff_hrs)) %>%
+      group_by(ID) %>%
+      summarise(
+        meanvisit_day = mean(time_spent)) %>%
+      suppressMessages()
+    
+    # Account for birds not visiting in daytime
+    missbirds <- birdsinclust[birdsinclust %!in% birdvisits_daytime$ID] %>% as.vector()
+    if (length(missbirds) != 0) {
+      hold <- data.frame(
+        ID = missbirds,
+        meanvisit_day = rep(0, length(missbirds))
+      )
+      birdvisits_daytime %<>% bind_rows(hold)
+    }
+    
+    # Finally, operate across all birds
+    birdvisits_daytime_fin <- birdvisits_daytime %>% ungroup() %>%
+      summarise(timespent = mean(meanvisit_day))
+    
+    # TimeFeedPerBird calculation:
+    feedpoints <- clustpoints %>% 
+      filter(behav == "SFeeding")
+    feedvisits <- feedpoints %>%
+      group_by(ID, date(timestamp)) %>%
+      summarise(count = n(),
+                time_spent = sum(timediff_hrs)) %>%
+      group_by(ID) %>%
+      summarise(meanvisit_day = mean(time_spent)) %>%
+      suppressMessages()
+    
+    # Account for birds not visiting in daytime
+    missbirds <- birdsinclust[birdsinclust %!in% feedvisits$ID] %>% as.vector()
+    if (length(missbirds) != 0) {
+      hold <- data.frame(
+        ID = missbirds,
+        meanvisit_day = rep(0, length(missbirds))
+      )
+      feedvisits %<>% bind_rows(hold)
+    }
+    # Finally, operate across all birds
+    feedvisits_fin <- feedvisits %>% ungroup() %>%
+      summarise(timespent = mean(meanvisit_day)) %>%
+      suppressMessages()
+    
+    
+    clustertable$TimePerBird[k] <- birdvisits$timespent
+    clustertable$TimePerBirdDay[k] <- birdvisits_daytime_fin$timespent
+    clustertable$TimePerBirdFeed[k] <- feedvisits_fin$timespent
+    
+    
     ### Generate revisit data -------------------------------------------
     
     revisitstart <- Sys.time()
     
-    birdsinclust <- strsplit(clust$birds, split = ", ") %>% unlist()
     
     tempdat <- mat.data %>%
       ungroup() %>%
@@ -680,7 +793,8 @@ rFunction <- function(data,
     nearstart <- Sys.time()
     
     locavailable <- FALSE
-    while (locavailable == FALSE) {
+    iteration <- 1
+    while (locavailable == FALSE & iteration < 100) {
       # Filter to time window of cluster and remove all birds in the cluster (travelling + feeding):
       neartags <- mat.data %>% 
         filter(between(timestamp, clust$firstdatetime, clust$lastdatetime),
@@ -689,6 +803,7 @@ rFunction <- function(data,
       if (nrow(neartags) != 0) { # we have at least 1 location to use
         locavailable <- TRUE
       } else {
+        iteration <- iteration + 1
         # If no locations in window, we extend it 1hr each way and check again
         clust$firstdatetime <- clust$firstdatetime - lubridate::weeks(1)
         clust$lastdatetime <- clust$lastdatetime + lubridate::weeks(1)
@@ -715,7 +830,7 @@ rFunction <- function(data,
     neartags2 <- mat.data %>% 
       mutate(X = st_coordinates(.)[, 1],
              Y = st_coordinates(.)[, 2]) %>%
-      filter(between(timestamp, clust$firstdatetime - days(30), clust$lastdatetime),
+      filter(between(timestamp, clust$firstdatetime - days(14), clust$lastdatetime),
              between(X, st_coordinates(clust)[, 1] - 50000, st_coordinates(clust)[, 1] + 50000),
              between(Y, st_coordinates(clust)[, 2] - 50000, st_coordinates(clust)[, 2] + 50000),
              ID %in% activetags)
@@ -904,6 +1019,7 @@ rFunction <- function(data,
   )))
   
   
+  
   # Finally, remove 1-location clusters from tagdata and clustertable
   rem <- clustertable$xy.clust[clustertable$Total == 1]
   data %<>% mutate(
@@ -911,7 +1027,8 @@ rFunction <- function(data,
       xy.clust %in% rem ~ NA,
       TRUE ~ xy.clust
     )
-  )
+  ) %>%
+    dplyr::select(-c("ID", "X", "Y"))
   clustertable %<>% filter(xy.clust %!in% rem)
   
   
