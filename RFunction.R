@@ -7,17 +7,40 @@ library('Gmedian')
 library('sf')
 library('stringr')
 library('units')
+library('pbapply')
 
 # Shortened 'not in':
 `%!in%` <- Negate(`%in%`)
 
 # Function to calculate geometric medians:
 calcGMedianSF <- function(data) {
-  med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
-    rename(x = V1, y = V2) %>%
-    st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
-    st_geometry()
+  
+  if (st_geometry_type(data[1,]) == "POINT") {
+    med <- data %>% 
+      st_coordinates()
+    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
+      rename(x = V1, y = V2) %>%
+      st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
+      st_geometry()
+  }
+  
+
+  if (st_geometry_type(data[1,]) == "MULTIPOINT") {
+    med <- data %>% 
+      st_coordinates() %>%
+      as.data.frame() %>%
+      group_by(L1) %>%
+      group_map(
+        ~ Gmedian::Weiszfeld(.)$median 
+      ) %>%
+      do.call(rbind, .) %>%
+      as.data.frame() %>%
+      st_as_sf(coords = colnames(.), crs = st_crs(data)) %>%
+      st_geometry()
+  }
+  
   return(med)
+  
 }
 
 rFunction <- function(data,
@@ -405,11 +428,12 @@ rFunction <- function(data,
         summarise(geometry = st_union(geometry)) %>% # Join geometries together into multipoint
         st_centroid() # Find mean location of two centroids (we should change this later)
     }
-
+    
+    
     # Add cluster data into main location data:
     data %<>%
       filter(index %!in% xytagdata$index) %>% # remove rows whose clusters need to be updated
-      bind_rows(., xytagdata) %>% # add them back in with the new update
+      mt_stack(., xytagdata, .track_combine = "merge") %>% # add them back in with the new update
       arrange(mt_track_id(.), mt_time(.)) # reorder
 
     
@@ -483,92 +507,79 @@ rFunction <- function(data,
     
     # End of clustering loop
   }
+  
+  
   rollingendtime <- Sys.time()
   logger.trace(paste0("CLUSTERING COMPLETE. Time taken: ", 
                difftime(rollingendtime, rollingstarttime, units = "mins"),  " mins. Generating clustertable for all clusters"))
   
   
   #' ----------------------------------------------------
-  # 8. Generate FULL clustertable ----------------------
+  # 8. Generate final clustertable ----------------------
   # This will contain output cluster information
   
-
   tablestarttime <- Sys.time()
   clustertable <- data %>%
     filter(!is.na(xy.clust)) %>%
-    
-    # Essential data for later computation:
-    mutate(
-      tag = mt_track_id(.),
-      datetime = mt_time(.),
-      timediff_hrs = mt_time_lags(.) %>% 
-        units::set_units("minutes") %>% 
-        units::drop_units()/60,
-      hour = mt_time(.) %>% 
-        lubridate::hour()
+    mutate(ID = mt_track_id(.), 
+           timestamp = mt_time(.),
+           timediff_hrs = mt_time_lags(.) %>% 
+             units::set_units("minutes") %>% 
+             units::drop_units()/60,) %>%
+    #as.data.frame() %>%
+    group_by(xy.clust, ID) %>%
+    summarise(
+      geometry = st_combine(geometry),
+      all_cluster_points = geometry,
+      
+      # Time calculations:
+      firstdatetime = min(timestamp),
+      lastdatetime = max(timestamp),
+      days = length(unique(lubridate::date(timestamp))),
+      totalduration = (ceiling_date(lastdatetime, unit = "days") - floor_date(firstdatetime, unit = "days")) %>% as.integer(),
+      daysempty = as.numeric(totalduration - days),
+      daysemptyprop = daysempty / totalduration,
+      no_nightpoints = all(nightpoint == 0),
+      
+      # Behavioural data:
+      Total = n(),
+      SFeeding = sum(behav == "SFeeding"),
+      SRoosting = sum(behav == "SRoosting"),
+      SResting = sum(behav == "SResting"),
+      MedianHourFeed = median(hour[behav == "SFeeding"], na.rm = T),
+      MedianHourDay = median(hour[hour > 5 & hour < 17], na.rm = T),
+      
+      # Accelerometer calculations
+      # med_var_x = case_when(
+      #   "var_acc_x" %in% colnames(data) ~ median(var_acc_x, na.rm = T),
+      #   TRUE ~ NA
+      # ),
+      # med_var_y = case_when(
+      #   "var_acc_y" %in% colnames(data) ~ median(var_acc_y, na.rm = T),
+      #   TRUE ~ NA
+      # ),
+      # med_var_z = case_when(
+      #   "var_acc_z" %in% colnames(data) ~ median(var_acc_z, na.rm = T),
+      #   TRUE ~ NA
+      # ),
+      # sd_var_x = case_when(
+      #   "var_acc_x" %in% colnames(data) ~ sd(var_acc_x, na.rm = T),
+      #   TRUE ~ NA
+      # ),
+      # sd_var_y = case_when(
+      #   "var_acc_y" %in% colnames(data) ~ sd(var_acc_y, na.rm = T),
+      #   TRUE ~ NA
+      # ),
+      # sd_var_z = case_when(
+      #   "var_acc_z" %in% colnames(data) ~ sd(var_acc_z, na.rm = T),
+      #   TRUE ~ NA
+      # )
+      
+      .groups = "keep"
     ) %>%
-    group_by(xy.clust) %>%
-    summarise(geometry = st_combine(geometry),
-              
-              # Time data:
-              firstdatetime = min(datetime),
-              lastdatetime = max(datetime),
-              days = length(unique(date(datetime))),
-              totalduration = (ceiling_date(lastdatetime, unit = "days") - floor_date(firstdatetime, unit = "days")) %>% as.integer(),
-              daysempty = as.numeric(totalduration - days),
-              MedianHourFeed = median(hour[behav == "SFeeding"], na.rm = T),
-              MedianHourDay = median(hour[hour > 5 & hour < 17], na.rm = T),
-              
-              # Behavioural data:
-              nbirds = length(unique(tag)),
-              birds = paste(unique(tag), collapse = ", "),
-              Total = n(),
-              SFeeding = sum(behav == "SFeeding"),
-              SRoosting = sum(behav == "SRoosting"),
-              SResting = sum(behav == "SResting"),
-              
-              # Accelerometer calculations
-              med_var_x = case_when(
-                "var_acc_x" %in% colnames(data) ~ median(var_acc_x, na.rm = T),
-                TRUE ~ NA
-              ),
-              med_var_y = case_when(
-                "var_acc_y" %in% colnames(data) ~ median(var_acc_y, na.rm = T),
-                TRUE ~ NA
-              ),
-              med_var_z = case_when(
-                "var_acc_z" %in% colnames(data) ~ median(var_acc_z, na.rm = T),
-                TRUE ~ NA
-              ),
-              
-              sd_var_x = case_when(
-                "var_acc_x" %in% colnames(data) ~ sd(var_acc_x, na.rm = T),
-                TRUE ~ NA
-              ),
-              sd_var_y = case_when(
-                "var_acc_y" %in% colnames(data) ~ sd(var_acc_y, na.rm = T),
-                TRUE ~ NA
-              ),
-              sd_var_z = case_when(
-                "var_acc_z" %in% colnames(data) ~ sd(var_acc_z, na.rm = T),
-                TRUE ~ NA
-              ),
-              
-              # Cols to be filled in loop below:
-              TimePerBird = NA,
-              TimePerBirdDay = NA,
-              TimePerBirdFeed = NA,
-              
-              DistMedian = NA,
-              DistSD = NA,
-              dist_to_bird_km = NA,
-              within_25k = NA,
-              within_50k = NA,
-              nightdist_mean = NA, 
-              nightdist_med = NA, 
-              nightdist_sd = NA,
-              arrivaldist_mean = NA,
-              arrivaldist_med = NA) 
+    st_as_sf(crs = st_crs(data))
+  
+
 
   rm(list = c("clusterDataDwnld", "clusteringData", "clusterpoints", "eventdata", "genclustertable", "xydata", "xytagdata", "mdist")) # clear some storage for next operations
   clustertable %<>% mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust") # switch to move2 for ease
@@ -577,448 +588,350 @@ rFunction <- function(data,
   logger.trace(paste0("Generating distance data for all clusters. This may run slowly"))
   
 
-
-  ## CLUSTERTABLE LOOPING -------------------------------------------
+  ## CLUSTERTABLE DATA PREP ---------------------------------------------------
   
-  # Convert data to sf format for easier filtering
+  
+  # Reformat data for clustertable calculations
+  
+  # Update geometry column to be geometric medians 
+  # These are per-bird, not per-cluster
+  clustertable %<>% st_set_geometry(
+    calcGMedianSF(.) %>%
+      st_geometry()
+  )
+  
+  # Add second geometry column for cluster-wide centroids
+  # These are per-cluster, not per-bird
+  wholeclusts <- clustertable %>%
+    group_by(xy.clust) %>%
+    summarise(
+      geometry = st_combine(geometry),
+      .groups = "keep"
+    ) %>%
+    st_set_geometry(
+      calcGMedianSF(.) %>%
+        st_geometry() 
+    ) %>%
+    rename(wholeclust_geometry = geometry) %>%
+    as.data.frame()
+  clustertable %<>% left_join(wholeclusts, by = "xy.clust")
+  
+  # Create matrix data for filtering speed
   mat.data <- data %>%
     mutate(ID = mt_track_id(.),
            timestamp = mt_time(.)) %>%
     as.data.frame() %>%
     dplyr::select(any_of(c("ID",
-             "geometry",
-             "timestamp",
-             "hour",
-             "dist_m",
-             "behav",
-             "sunrise_timestamp",
-             "sunset_timestamp",
-             "timediff_hrs",
-             "xy.clust"))) %>%
+                           "geometry",
+                           "timestamp",
+                           "hour",
+                           "dist_m",
+                           "behav",
+                           "sunrise_timestamp",
+                           "sunset_timestamp",
+                           "timediff_hrs",
+                           "xy.clust",
+                           "nightpoint"))) %>%
     st_as_sf(crs = st_crs(data))
-    
-    
-  preptime <- 0
-  revisittime <- 0
-  neartime <- 0
-  nighttime <- 0
-  arrivtime <- 0
-  START <- Sys.time()
   
-  tempdat <- NULL
-  for (k in 1:nrow(clustertable)) {
-    
 
-    startprep <- Sys.time()
+  ## FURTHER CLUSTERTABLE ATTRIBUTES -------------------------------------------
+  
+  ### a. Calculate accelerometer data if ACC is available
+  if ("var_acc_x" %in% colnames(data)) {
     
-    if (mod(k, 100) == 1) {logger.trace(paste0("    ", round(100 * (k / nrow(clustertable)), 3), "% complete"))} # Log progress
+    logger.trace("   Accelerometer columns identified. Calculating ACC summaries")
     
-    # Convert cluster to its constituent points: 
-    clustdat <- st_geometry(clustertable[k,]) %>%
-      st_cast("POINT") 
-    dists <- clustdat %>%
-      st_distance() %>% 
-      units::set_units("metres") %>%
-      units::drop_units()
-    
-    # Median and SD distance between points:
-    dists <- dists[upper.tri(dists)] %>%
-      as.vector() 
-    tempmed <- median(dists)
-    tempsd <- sd(dists)
-    clustertable$DistMedian[k] <- tempmed
-    clustertable$DistSD[k] <- tempsd
-    
-    # Generate final median location:
-    clustertable$geometry[k] <- calcGMedianSF(clustdat)
-    clust <- clustertable[k,]
-    
-    endprep <- Sys.time()
-    preptime + difftime(endprep, startprep, units = "mins")  # TIMECHECK
-    
-    
-    ### Generate time-at-carcass data -----------------------------------
-    
-    birdsinclust <- strsplit(clust$birds, split = ", ") %>% unlist()
-    
-    # TimePerBird calculation:
-    clustpoints <- mat.data %>%
-      as.data.frame() %>%
-      filter(xy.clust == clust$xy.clust) 
-    birdvisits <- clustpoints %>%
-      group_by(ID, date(timestamp)) %>%
-      summarise(count = n(),
-                time_spent = sum(timediff_hrs)) %>%
-      group_by(ID) %>%
-      summarise(meanvisit = mean(time_spent)) %>%
-      
-      # Across all birds:
-      ungroup() %>%
-      summarise(timespent = mean(meanvisit)) %>%
-      suppressMessages()
-    
-    # TimePerBirdDay calculation:
-    if ("sunrise_timestamp" %in% colnames(mat.data)) {
-      clustpoints_daytime <- clustpoints %>% filter(
-        between(timestamp, sunrise_timestamp, sunset_timestamp)
-      )
-    } else {
-        clustpoints_daytime <- clustpoints %>% filter(
-          between(hour(timestamp), 5, 17)
-        )
-      }
-
-    birdvisits_daytime <- clustpoints_daytime %>%
-      group_by(ID, date(timestamp)) %>%
-      summarise(count = n(),
-                time_spent = sum(timediff_hrs)) %>%
-      group_by(ID) %>%
+    clustertable_acc <- data %>%
+      filter(!is.na(xy.clust)) %>%
+      mutate(ID = mt_track_id(.), 
+             timestamp = mt_time(.),
+             timediff_hrs = mt_time_lags(.) %>% 
+               units::set_units("minutes") %>% 
+               units::drop_units()/60,) %>%
+      #as.data.frame() %>%
+      group_by(xy.clust, ID) %>%
       summarise(
-        meanvisit_day = mean(time_spent)) %>%
-      suppressMessages()
-    
-    # Account for birds not visiting in daytime
-    missbirds <- birdsinclust[birdsinclust %!in% birdvisits_daytime$ID] %>% as.vector()
-    if (length(missbirds) != 0) {
-      hold <- data.frame(
-        ID = missbirds,
-        meanvisit_day = rep(0, length(missbirds))
+        # Accelerometer calculations
+        med_var_x = median(var_acc_x, na.rm = T),
+        med_var_y = median(var_acc_y, na.rm = T),
+        med_var_z = median(var_acc_z, na.rm = T),
+        
+        sd_var_x = sd(var_acc_x, na.rm = T),
+        sd_var_y = sd(var_acc_y, na.rm = T),
+        sd_var_z = sd(var_acc_z, na.rm = T),
+        
+        .groups = "keep"
       )
-      birdvisits_daytime %<>% bind_rows(hold)
-    }
-    
-    # Finally, operate across all birds
-    birdvisits_daytime_fin <- birdvisits_daytime %>% ungroup() %>%
-      summarise(timespent = mean(meanvisit_day))
-    
-    # TimeFeedPerBird calculation:
-    feedpoints <- clustpoints %>% 
-      filter(behav == "SFeeding")
-    feedvisits <- feedpoints %>%
-      group_by(ID, date(timestamp)) %>%
-      summarise(count = n(),
-                time_spent = sum(timediff_hrs)) %>%
-      group_by(ID) %>%
-      summarise(meanvisit_day = mean(time_spent)) %>%
-      suppressMessages()
-    
-    # Account for birds not visiting in daytime
-    missbirds <- birdsinclust[birdsinclust %!in% feedvisits$ID] %>% as.vector()
-    if (length(missbirds) != 0) {
-      hold <- data.frame(
-        ID = missbirds,
-        meanvisit_day = rep(0, length(missbirds))
-      )
-      feedvisits %<>% bind_rows(hold)
-    }
-    # Finally, operate across all birds
-    feedvisits_fin <- feedvisits %>% ungroup() %>%
-      summarise(timespent = mean(meanvisit_day)) %>%
-      suppressMessages()
-    
-    
-    clustertable$TimePerBird[k] <- birdvisits$timespent
-    clustertable$TimePerBirdDay[k] <- birdvisits_daytime_fin$timespent
-    clustertable$TimePerBirdFeed[k] <- feedvisits_fin$timespent
-    
-    
-    ### Generate revisit data -------------------------------------------
-    
-    revisitstart <- Sys.time()
-    
-    
-    tempdat <- mat.data %>%
-      ungroup() %>%
-      
-      filter(between(timestamp, clust$firstdatetime, clust$lastdatetime),
-             ID %in% birdsinclust) %>%
-      mutate(incluster = ifelse(xy.clust != clustertable$xy.clust[k] | is.na(xy.clust), 0, 1),
-             indaycluster = case_when(
-               
-               # Method for sunrise-sunset times:
-               suntimes == TRUE & incluster == 1 & between(timestamp, sunrise_timestamp, sunset_timestamp) ~ 1,
-
-               # Method for no sunset-sunrise times:
-               suntimes == FALSE & incluster == 1 & between(hour(timestamp), 10, 15) ~ 1,
-               
-               TRUE ~ 0
-             ),
-             
-             # Isolate the dates on which each bird is present using temporary date col:
-             tempdate = ifelse(incluster == 0, NA, as_date(timestamp)),
-             tempdate2 = as_date(timestamp)) %>%
-      
-      group_by(ID, tempdate2) %>%
-      
-      summarise(
-        xy.clust = clust$xy.clust,
-        visitsinevent = sum(rle(incluster)$values),
-        dayvisits = sum(rle(indaycluster)$values),
-        dayvisits = pmin(dayvisits, visitsinevent), # Fix case where dayvisits > totalvisits 
-        ndays = n_distinct(tempdate, na.rm = T), # needs NA so doesnt count these
-        meanvisits = visitsinevent / ndays,
-        meandayvisits = dayvisits / ndays) %>%
-      suppressMessages() %>%
-      ungroup() %>%
-      
-      group_by(ID) %>% # get mean daily visits per bird
-      # Take means across birds:
-      summarise(xy.clust = xy.clust[1],
-                visitsinevent_mean_pday_pbird = mean(meanvisits, na.rm = TRUE),
-                dayvisits_mean_pday_pbird = mean(meandayvisits, na.rm = TRUE)) %>%
-      suppressMessages() %>%
-      # Take means across birds for whole cluster:
-      group_by(xy.clust) %>%
-      summarise(xy.clust = xy.clust[1],
-                visitsinevent_mean_pday = mean(visitsinevent_mean_pday_pbird),
-                dayvisits_mean_pday = mean(dayvisits_mean_pday_pbird)) %>%
-      suppressMessages() %>%
-      bind_rows(tempdat, .)
-      
-      # select(-ID) %>%
-      # group_by(xy.clust) %>%
-      # # Take means across birds:
-      # summarise(xy.clust = clust$xy.clust,
-      #           #visitsinevent_tot = sum(visitsinevent),
-      #           visitsinevent_mean_pday = mean(meanvisits),
-      #           #dayvisits_tot = sum(dayvisits),
-      #           dayvisits_mean_pday = mean(meandayvisits)) %>%
-      # bind_rows(tempdat, .)
-      
-    revisitend <- Sys.time()
-    revisittime + difftime(revisitend, revisitstart, units = "mins") # TIMECHECK
-    
-    ### Generate data on nearest birds/ids -----------------------
-    
-    nearstart <- Sys.time()
-    
-    locavailable <- FALSE
-    iteration <- 1
-    while (locavailable == FALSE & iteration < 100) {
-      # Filter to time window of cluster and remove all birds in the cluster (travelling + feeding):
-      neartags <- mat.data %>% 
-        filter(between(timestamp, clust$firstdatetime, clust$lastdatetime),
-               ID %!in% unlist(stringr::str_split(clust$birds, pattern = ", "))
-        )
-      if (nrow(neartags) != 0) { # we have at least 1 location to use
-        locavailable <- TRUE
-      } else {
-        iteration <- iteration + 1
-        # If no locations in window, we extend it 1hr each way and check again
-        clust$firstdatetime <- clust$firstdatetime - lubridate::weeks(1)
-        clust$lastdatetime <- clust$lastdatetime + lubridate::weeks(1)
-      }
-    }
-    # Get the nearest location
-    dist <- neartags[st_nearest_feature(st_geometry(clust),
-                                             neartags),] %>%
-      st_distance(clust)
-    clustertable$dist_to_bird_km[k] <- units::set_units(dist, "metres") %>%
-      units::drop_units() %>%
-      divide_by(1000)
-    
-    # reset clust times
-    clust <- clustertable[k,]
-    
-    # Identify active tags
-    activetags <- mat.data %>% 
-      filter(between(timestamp, clust$firstdatetime, clust$lastdatetime)) %>%
-      .$ID %>%
-      unique()
-
-    # Start with 50km buffer to speed up filtering:
-    neartags2 <- mat.data %>% 
-      mutate(X = st_coordinates(.)[, 1],
-             Y = st_coordinates(.)[, 2]) %>%
-      filter(between(timestamp, clust$firstdatetime - days(14), clust$lastdatetime),
-             between(X, st_coordinates(clust)[, 1] - 50000, st_coordinates(clust)[, 1] + 50000),
-             between(Y, st_coordinates(clust)[, 2] - 50000, st_coordinates(clust)[, 2] + 50000),
-             ID %in% activetags)
-    
-    rad50 <- st_buffer(clust, dist = 50000)
-    nearpoints50 <- neartags2[st_contains(rad50, neartags2) %>% unlist,]
-    nearbirds50 <- nearpoints50 %>%
-      .$ID %>%
-      append(birdsinclust) %>% # fix to tags coming online halfway through clust
-      unique() %>% 
-      length()
-    
-    # Use this subset for 25km buffer:
-    rad25 <- st_buffer(clust, dist = 25000)
-    nearpoints25 <- neartags2[st_contains(rad25, nearpoints50) %>% unlist,]
-    nearbirds25 <- nearpoints25 %>%
-      .$ID %>%
-      append(birdsinclust) %>%
-      unique() %>% 
-      length()
-    
-    clustertable$within_50k[k] <- nearbirds50
-    clustertable$within_25k[k] <- nearbirds25
-    
-    nearend <- Sys.time()
-    neartime <- neartime + difftime(nearend, nearstart, units = "mins") # TIMECHECK
-    
-
-    ### Generate night-distance data -------------------------------------
-    
-    nightstart <- Sys.time()
-    
-    # Isolate locations of cluster-involved birds over its full timespan
-    clustpoints <- mat.data %>% 
-      filter(
-        between(timestamp,
-          clust$firstdatetime - days(1),
-          clust$lastdatetime),
-        ID %in% (strsplit(clust$birds, split = ", ") %>% unlist())) 
-    
-
-    if (suntimes == TRUE) {
-      clustpoints %<>% mutate(
-        day = case_when(
-          between(timestamp,
-                sunrise_timestamp + hours(1),
-                sunset_timestamp - hours(1)) ~ 1,
-        TRUE ~ 0
-      ))
-    } else {
-      clustpoints %<>%       mutate(day = case_when(
-        hour > 21 | hour < 4 ~ 0,
-        TRUE ~ 1
-      ))
-    }
-    
-    atevent <- clustpoints %>% # select only inside-cluster points
-      filter(xy.clust == clust$xy.clust)
-    
-    # Extract the days on which each bird was at the event:
-    daysbybird <- table(atevent$ID, as_date(atevent$timestamp)) %>%
-      as.data.frame() %>%
-      filter(Freq > 0)
-    nightdat <- atevent[0,]
-        # Loop through to create nightdist dataset:
-    
-    nightdist_temp <- data.frame(id = unique(daysbybird$Var1), nightdist_mean = NA, nightdist_med = NA, nightdist_sd = NA)
-    
-    # Loop by bird to get individual distances
-    for (j in 1:length(unique(daysbybird$Var1))) {
-      id <- unique(daysbybird$Var1)[j] # extract id
-      daysbybird_temp <- filter(daysbybird, Var1 == id) # extract visits data
-      
-      # Acquire night locations:
-      for (m in 1:nrow(daysbybird_temp)) {
-        newdat <- clustpoints %>%
-          filter(ID == daysbybird_temp[m, 1],
-                 date(timestamp) == as_date(daysbybird_temp[m, 2]))
-        nightdat <- rbind(nightdat, newdat)
-      }
-      
-      # Don't run this if all points are in daytime
-      if (sum(nightdat$day) != nrow(nightdat)) {
-        nightdists <- st_distance(
-          nightdat[nightdat$day == 1,],
-          nightdat[nightdat$day == 0,]
-        ) %>% 
-          units::drop_units() %>%
-          divide_by(1000)
-        nightdist_temp$nightdist_mean[j] <- mean(nightdists, na.rm = T)
-        nightdist_temp$nightdist_med[j] <- median(nightdists, na.rm = T)
-        nightdist_temp$nightdist_sd[j] <- sd(nightdists, na.rm = T)
-      }
-      
-    }
-
-    # Find mean of by-bird operations and add to clustertable
-    clustertable$nightdist_mean[k] <- mean(nightdist_temp$nightdist_mean, na.rm = T)
-    clustertable$nightdist_med[k] <- mean(nightdist_temp$nightdist_med, na.rm = T)
-    clustertable$nightdist_sd[k] <- mean(nightdist_temp$nightdist_sd, na.rm = T)
-    
-    nightend <- Sys.time()
-    nighttime <- nighttime + difftime(nightend, nightstart, units = "mins") # TIMECHECK
-    
-    
-    ### Generate night-before-arrival distance data --------------------------
-    
-    arrivstart <- Sys.time()
-    
-    # Identify each ID's first date of arrival
-    firstarrivals <- daysbybird %>%
-      as.data.frame() %>%
-      group_by(Var1) %>%
-      slice_min(order_by = Var2) %>%
-      ungroup()
-    
-    for (m in nrow(firstarrivals)) {
-      
-
-      # If sunrise-sunset times available, use those
-      if (suntimes == TRUE) {
-        nightdat <- clustpoints %>% 
-          filter(
-            # Case 1: Day before arrival, late at night 
-            (date(timestamp) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
-              (day == 0) &
-              (hour > 12) &
-              (ID == firstarrivals$Var1[m]) |
-              # Case 2: Day of arrival, early morning
-              (date(timestamp) == as_date(toString(firstarrivals$Var2[m]))) &
-              (hour < 12) &
-              (day == 0) &
-              (ID == firstarrivals$Var1[m])
-          )
-      } else {
-        # Otherwise just use 9pm-5am
-        nightdat <- clustpoints %>%
-          filter(
-            # Case 1: Day before arrival, late at night
-            (date(timestamp) == as_date(toString(firstarrivals$Var2[m])) - days(1)) &
-              (hour > 21) &
-              (ID == firstarrivals$Var1[m]) |
-              # Case 2: day of arrival, early morning
-              (date(timestamp) == as_date(toString(firstarrivals$Var2[m]))) &
-              (hour < 5) &
-              (ID == firstarrivals$Var1[m])
-          )
-      }
-      
-      arrivaldists <- st_distance(nightdat, clust) %>%
-        divide_by(1000)
-      clustertable$arrivaldist_mean[k] <- mean(arrivaldists, na.rm = T)
-      clustertable$arrivaldist_med[k] <- median(arrivaldists, na.rm = T)
-      
-      
-    }
-    
-    nightbefore <- clustpoints %>%
-      filter(between(timestamp,
-                     clust$firstdatetime - days(1),
-                     clust$lastdatetime
-                     ))
-    
-    arrivend <- Sys.time()
-    arrivtime <- arrivtime + difftime(arrivend, arrivstart, units = "mins") # TIMECHECK
-
   }
   
-  END <- Sys.time()
-  TOTALRUN <- difftime(END, START, units = "mins") 
+  ### b. Time-at-Carcass Calculations -----------------------------------------
+  logger.trace("   Generating [a. Time-at-Carcass data]")
   
-  logger.trace(cat(paste0(
-    "Clustertable Generation time-to-run [mins]:",
-    " Total Duration: ", 
-    TOTALRUN,
-    "\n   Prep: ", 
-    preptime, 
-    "\n   Revisits: ",
-    revisittime, 
-    "\n   Within 25/50k: ",
-    neartime,
-    "\n   Nightvisits: ",
-    nighttime, 
-    "\n   Arrival distances: ",
-    arrivtime
-  )))
+  timeAtCarcTab <- function(clustdat) {
+    
+    carctime <- clustdat %>%
+      filter(!is.na(xy.clust)) %>%
+      as.data.frame() %>%
+      group_by(xy.clust, ID, date(timestamp)) %>%
+      # Remove all final points to prevent overnight locations messing things up:
+      filter(row_number() != n()) %>%
+      summarise(count = n(),
+                time_spent = sum(timediff_hrs),
+                time_spent_day = sum(timediff_hrs * !nightpoint),
+                .groups = "keep"
+                ) %>%
+      
+      group_by(xy.clust, ID) %>%
+      summarise(
+        meanvisit = mean(time_spent, na.rm = T),
+        meanvisit_day = mean(time_spent_day, na.rm = T),
+        .groups = "keep") 
+    return(carctime)
+  }
+  carctime <- timeAtCarcTab(mat.data)
   
   
+  ### c. Revisitation Calculations --------------------------------------------
+  logger.trace("   Generating [b. Revisitation data]")
+  
+  
+  revisitTab <- function(clustdat, clustertable) {
+    
+    revisit_calc <- function(row) {
+      
+      clust <- row$xy.clust
+      bird <- row$ID
+      firstdate <- as_datetime(row$firstdatetime) 
+      lastdate <- as_datetime(row$lastdatetime)
+      
+      nearpoints <- clustdat %>% 
+        filter(
+          between(timestamp, firstdate, lastdate),
+          ID == bird
+        ) %>%
+        mutate(incluster = ifelse(xy.clust == clust & !is.na(xy.clust), 1, 0),
+               indaycluster = ifelse(incluster == 1 & nightpoint == 0, 1, 0)
+        ) %>%
+        group_by(date(timestamp)) %>%
+        summarise(
+          visits = sum(rle(incluster)$values),
+          dayvisits = sum(rle(indaycluster)$values),
+          dayvisits = pmin(dayvisits, visits), # fix case where dayvisits > visits
+          .groups = "keep" 
+        ) %>%
+        ungroup() %>%
+        summarise(
+          meanvisits = mean(visits, na.rm = T),
+          meandayvisits = mean(dayvisits, na.rm = T),
+          .groups = "keep" 
+        )
+      
+      return(c(
+        nearpoints$meanvisits,
+        nearpoints$meandayvisits
+      ))
+    }
+    
+    revdat <- pbapply(clustertable, 1, revisit_calc) %>% 
+      t() %>%
+      as.data.frame() %>%
+      rename(meanvisits = V1, meandayvisits = V2)
+    outclusts <- cbind(clustertable, revdat) %>%
+      as.data.frame() %>%
+      dplyr::select(c("xy.clust", "ID", "meanvisits", "meandayvisits"))
+    return(outclusts)
+  }
+  
+  # FOLLOWING LINE FAILS
+  revisits <- revisitTab(mat.data, clustertable) 
+  
+  
+  
+  ### d. Night-Distance Calculations ------------------------------------------
+  logger.trace("   Generating [c. Night-distance data]")
+  
+  nightDistTab <- function(clustdat, clustertable) {
+    
+    clustdays <- clustdat %>%
+      as.data.frame() %>%
+      group_by(xy.clust, ID, date(timestamp)) %>%
+      summarise(.groups = "keep") %>%
+      rename(birdID = ID,
+             date = `date(timestamp)`)  %>%
+      left_join(select(as.data.frame(clustertable), c("xy.clust", "wholeclust_geometry")), by = "xy.clust", relationship = "many-to-many") %>%
+      rowwise() %>%
+      mutate(nightdist_mean =
+               st_distance(
+                 wholeclust_geometry,
+                 filter(clustdat,
+                        ID == birdID,
+                        date(timestamp) == date,
+                        nightpoint == 1
+                 )
+               ) %>%
+               mean(na.rm = T)
+      ) %>%
+      rename(ID = birdID)
+    
+    # Now we simplify to cluster-bird level
+    bird_dists <- clustdays %>%
+      group_by(xy.clust, ID) %>%
+      summarise(nightdist_mean = mean(nightdist_mean, na.rm = T), .groups = "keep")
+    
+    return(bird_dists)
+  }
+  nightdists <- nightDistTab(mat.data, clustertable)
+  
+  
+  
+  ### e. Arrival-Distance Calculations ---------------------------------------
+  logger.trace("   Generating [d. Arrival-Distance data]")
+  
+  arrivalTab <- function(clustdat, clustertable) {
+
+    clustarrivals <- clustdat %>%
+      st_drop_geometry() %>%
+      as.data.frame() %>%
+      group_by(xy.clust, ID) %>%
+      summarise(day_of_arrival = min(date(timestamp)), .groups = "keep") %>%
+      rename(birdID = ID) %>%
+      left_join(
+        clustertable %>%
+          as.data.frame() %>%
+          select(c("xy.clust", "wholeclust_geometry")) %>%
+          .[!duplicated(.),] %>%
+          st_as_sf(crs = st_crs(data)),
+        by = "xy.clust", relationship = "many-to-many") %>%
+      .[!duplicated(.),] %>%
+      st_set_geometry(.$wholeclust_geometry) %>%
+      dplyr::select(-wholeclust_geometry)
+    
+    genClustDists <- function(row) {
+      
+      clust <- row$xy.clust
+      bird <- row$birdID
+      arrivaldate <- row$day_of_arrival %>% as_date()
+      clustgeometry <- row$wholeclust_geometry %>%
+        st_sfc(crs = st_crs(clustdat))
+      
+      arrivaldist <- clustdat %>%
+        filter(between(
+          timestamp,
+          arrivaldate - hours(12), 
+          arrivaldate + hours(12)
+        ),
+        nightpoint == 1,
+        ID == bird) %>%
+        mutate(
+          dist = st_distance(geometry, clustgeometry)
+        ) %>%
+        .$dist %>%
+        mean(na.rm = T)
+      
+      return(arrivaldist)
+    }
+    arrivaldat <- pbapply::pbapply(clustarrivals, 1, genClustDists)
+    
+    outdat <- clustarrivals %>%
+      ungroup() %>%
+      mutate(arrivaldists = arrivaldat) %>%
+      st_drop_geometry() %>%
+      rename(ID = birdID) %>%
+      select(-c("day_of_arrival"))
+    
+    return(outdat)
+  }
+  arrivaldists <- arrivalTab(mat.data, clustertable)
+  
+  
+  ### f. Nearest-Tag Calculations --------------------------------------------
+  logger.trace("   Generating [d. Nearest-Tag data]")
+  
+  nearBirdsTab <- function(clustdat, clustertable) {
+    
+    # List all clusters
+    topclusters <- clustertable %>% 
+      ungroup() %>%
+      st_set_geometry(.$wholeclust_geometry) %>%
+      group_by(xy.clust) %>%
+      summarise(
+        birds = paste(unique(ID), collapse = ", "),
+        firstdatetime = min(firstdatetime, na.rm = T),
+        lastdatetime = max(lastdatetime, na.rm = T),
+        nbirds = length(unique(ID)),
+        .groups = "keep" 
+      )
+    
+    distvals <- function(row) {
+      
+      clustID <- row$xy.clust
+      firstdatetime <- row$firstdatetime %>% as_datetime()
+      lastdatetime <- row$lastdatetime %>% as_datetime()
+      clustgeometry <- row$geometry %>%
+        st_sfc(crs = st_crs(clustdat))
+      
+      nearpoints <- clustdat %>%
+        filter(between(timestamp, firstdatetime - days(14), lastdatetime)) 
+      
+      activetags <- nearpoints %>%
+        filter(between(timestamp, firstdatetime, lastdatetime)) %>%
+        .$ID %>%
+        unique()
+      
+      nearpoints2 <- nearpoints %>% 
+        mutate(
+          dist = st_distance(geometry, clustgeometry)
+        ) %>% 
+        filter(ID %in% activetags,
+               ID %!in% row$birds
+        )
+      
+      mindist_m <- min(nearpoints2$dist, na.rm = T) %>%
+        units::set_units("metres") %>%
+        units::drop_units()
+      within_25k <- length(unique(nearpoints2$ID[nearpoints2$dist < units::set_units(25, "kilometres")]))
+      within_50k <- length(unique(nearpoints2$ID[nearpoints2$dist < units::set_units(50, "kilometres")]))
+      
+      return(c(mindist_m, within_25k, within_50k))
+    }
+    
+    birddat <- pbapply::pbapply(topclusters, 1, distvals) %>%
+      t() %>%
+      as.data.frame() %>%
+      rename(
+        mindist_m = V1,
+        within_25k = V2, 
+        within_50k = V3
+      )
+    
+    topclusters_final <- cbind(topclusters, birddat) %>%
+      as.data.frame() %>%
+      dplyr::select(c("xy.clust", "birds", "mindist_m", "within_25k", "within_50k"))
+    return(topclusters_final)
+  }
+  nearbirds <- nearBirdsTab(mat.data, clustertable)
+  
+  ### g. Stack outputs into final clustertable ---------------------------------
+  logger.trace("   Merging [a-f] into primary clustertable")
+  
+  clustertable %<>%
+    left_join(carctime, by = c("xy.clust", "ID")) %>%
+    left_join(revisits, by = c("xy.clust", "ID")) %>%
+    left_join(nightdists, by = c("xy.clust", "ID")) %>%
+    left_join(arrivaldists, by = c("xy.clust", "ID")) %>%
+    left_join(nearbirds, by = "xy.clust") %>%
+    mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
+  
+  if ("var_acc_x" %in% colnames(data)) {
+    clustertable %<>% 
+      left_join(st_drop_geometry(clustertable_acc) %>% 
+                  select(c("xy.clust", "med_var_x", "med_var_y", "med_var_z", "sd_var_x", "sd_var_y", "sd_var_z")), 
+                by = c("xy.clust", "ID"))
+  }
+  
+  
+  ## 9. Finalise Outputs ---------------------------------------------------------
   
   # Finally, remove 1-location clusters from tagdata and clustertable
   rem <- clustertable$xy.clust[clustertable$Total == 1]
@@ -1033,12 +946,11 @@ rFunction <- function(data,
   
   
   # Looping complete - log time and release outputs
-  tableendtime <- Sys.time()
-  logger.trace(paste0("Clustertable generation completed. Time taken: ", 
-                      difftime(tableendtime, tablestarttime, units = "mins"), " mins."))
+  #tableendtime <- Sys.time()
+  #logger.trace(paste0("Clustertable generation completed. Time taken: ", 
+  #                    difftime(tableendtime, tablestarttime, units = "mins"), " mins."))
 
-    clustertable %<>% left_join(st_drop_geometry(tempdat), by = "xy.clust") %>%
-      as.data.frame() # temporarily convert to DF to add clustercodes (Move object creates errors)
+    clustertable %<>% as.data.frame() %>% st_as_sf() # temporarily convert to DF to add clustercodes (Move object creates errors)
     logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
   
   # Fix to remove overwritten clusters from clustertable:
@@ -1049,7 +961,10 @@ rFunction <- function(data,
   
   # Add clustercode:
   clustertable %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)) %>%
-    mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")
+    mt_as_move2(time_column = "firstdatetime", track_id_column = "xy.clust")  %>%
+    mt_as_track_attribute(c("birds", "mindist_m", "within_25k", "within_50k")) %>%
+    st_set_geometry(.$wholeclust_geometry) %>% # change geometry to be whole-cluster centroid (the same location will be shared by several rows)
+    dplyr::select(-"wholeclust_geometry")
   data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
   
   # Release outputs
