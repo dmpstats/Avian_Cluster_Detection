@@ -749,41 +749,83 @@ rFunction <- function(data,
   
   
   ### d. Night-Distance Calculations ------------------------------------------
-  logger.trace("   Generating [c. Night-distance data]")
   
-  nightDistTab <- function(clustdat, clustertable) {
+  
+  
+  logger.trace("   Generating [c. Night-distance data]")
+
+  nightTab <- function(clustdat, clustertable) {
     
+    # ALTERNATIVE METHOD TEST
+    # Firstly, filter to all night locations
+    nightpts <- clustdat %>% 
+      select(-xy.clust) %>%
+      as.data.frame() %>%
+      filter(nightpoint == 1) %>%
+      mutate(date = case_when(
+        # Fix night locations being 'split' by midnight:
+        # If before midnight, associate it with that same date
+        hour(timestamp) > 12 ~ date(timestamp),
+        # But if in the morning, associate it with the night before
+        hour(timestamp) < 12 ~ date(timestamp) - days(1)
+      ))
+    
+    # Generate second table:
+    # clust-bird-date, one entry for each clust visited by a bird on each date
     clustdays <- clustdat %>%
       as.data.frame() %>%
+      filter(!is.na(xy.clust)) %>%
       group_by(xy.clust, ID, date(timestamp)) %>%
-      summarise(.groups = "keep") %>%
-      rename(birdID = ID,
-             date = `date(timestamp)`)  %>%
-      left_join(select(as.data.frame(clustertable), c("xy.clust", "wholeclust_geometry")), by = "xy.clust", relationship = "many-to-many") %>%
-      rowwise() %>%
-      mutate(nightdist_mean =
-               st_distance(
-                 wholeclust_geometry,
-                 filter(clustdat,
-                        ID == birdID,
-                        date(timestamp) == date,
-                        nightpoint == 1
-                 )
-               ) %>%
-               mean(na.rm = T)
-      ) %>%
-      rename(ID = birdID)
+      summarise() %>%
+      rename(date = `date(timestamp)`) %>%
+      
+      # Bind clust centroid data:
+      left_join(
+        clustertable %>%
+          as.data.frame() %>%
+          select(c("xy.clust", "wholeclust_geometry")) %>%
+          .[!duplicated(.),] %>%
+          st_as_sf(crs = st_crs(data)),
+        by = "xy.clust", relationship = "many-to-many")  %>%
+      .[!duplicated(.),] 
     
-    # Now we simplify to cluster-bird level
-    bird_dists <- clustdays %>%
+    # The following table contains all night locations 
+    # and has matched them to a cluster visited by a bird on that same day.
+    # Where more than 1 cluster is visited by a bird within a day, the
+    # night location has been duplicated (once for each cluster) so that it can be grouped more than once.
+    night_table <- left_join(nightpts, clustdays, by = c("ID", "date"), relationship = "many-to-many") %>% 
+      filter(!is.na(xy.clust)) 
+    
+    # Now we introduce a distance column:
+    dists <- pbapply::pbmapply(st_distance, night_table$geometry, night_table$wholeclust_geometry)
+    nightdists <- cbind(night_table, dists)
+    
+    # Testing a new variable: proportion of nearby night points 
+    # This is the proportion of night points on the same day as this cluster 
+    # within 250m
+    nearnights <- nightdists %>%
       group_by(xy.clust, ID) %>%
-      summarise(nightdist_mean = mean(nightdist_mean, na.rm = T), .groups = "keep")
+      summarise(near_night_prop = sum(dists < 250) / n())
     
-    return(bird_dists)
+    
+    # Group by clust-ID-date and summarise, taking median first
+    nightdists_by_day <- nightdists %>%
+      group_by(ID, date, xy.clust) %>%
+      summarise(nightdist = median(dists, na.rm = T), .groups = "keep")
+    
+    # Finally, take mean per bird across several days
+    nightdists_bird_clust <- nightdists_by_day %>%
+      group_by(xy.clust, ID) %>%
+      summarise(nightdist_med = mean(nightdist, na.rm = T), .groups = "keep") %>%
+      left_join(nearnights, by = c("xy.clust", "ID"))
+    
+    return(nightdists_bird_clust)
+    
   }
-  nightdists <- nightDistTab(mat.data, clustertable)
   
-  
+  nightdists <- nightTab(mat.data, clustertable)
+ 
+
   
   ### e. Arrival-Distance Calculations ---------------------------------------
   logger.trace("   Generating [d. Arrival-Distance data]")
