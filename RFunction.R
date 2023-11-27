@@ -684,8 +684,8 @@ rFunction <- function(data,
       
       group_by(xy.clust, ID) %>%
       summarise(
-        meanvisit = mean(time_spent, na.rm = T),
-        meanvisit_day = mean(time_spent_day, na.rm = T),
+        meanvisit_time = mean(time_spent, na.rm = T),
+        meanvisit_time_day = mean(time_spent_day, na.rm = T),
         .groups = "keep") 
     return(carctime)
   }
@@ -736,10 +736,10 @@ rFunction <- function(data,
     revdat <- pbapply(clustertable, 1, revisit_calc) %>% 
       t() %>%
       as.data.frame() %>%
-      rename(meanvisits = V1, meandayvisits = V2)
+      rename(meanvisits = V1, meanvisits_daytime = V2)
     outclusts <- cbind(clustertable, revdat) %>%
       as.data.frame() %>%
-      dplyr::select(c("xy.clust", "ID", "meanvisits", "meandayvisits"))
+      dplyr::select(c("xy.clust", "ID", "meanvisits", "meanvisits_daytime"))
     return(outclusts)
   }
   
@@ -759,7 +759,7 @@ rFunction <- function(data,
     # ALTERNATIVE METHOD TEST
     # Firstly, filter to all night locations
     nightpts <- clustdat %>% 
-      select(-xy.clust) %>%
+      dplyr::select(-xy.clust) %>%
       as.data.frame() %>%
       filter(nightpoint == 1) %>%
       mutate(date = case_when(
@@ -783,7 +783,7 @@ rFunction <- function(data,
       left_join(
         clustertable %>%
           as.data.frame() %>%
-          select(c("xy.clust", "wholeclust_geometry")) %>%
+          dplyr::select(c("xy.clust", "wholeclust_geometry")) %>%
           .[!duplicated(.),] %>%
           st_as_sf(crs = st_crs(data)),
         by = "xy.clust", relationship = "many-to-many")  %>%
@@ -841,7 +841,7 @@ rFunction <- function(data,
       left_join(
         clustertable %>%
           as.data.frame() %>%
-          select(c("xy.clust", "wholeclust_geometry")) %>%
+          dplyr::select(c("xy.clust", "wholeclust_geometry")) %>%
           .[!duplicated(.),] %>%
           st_as_sf(crs = st_crs(data)),
         by = "xy.clust", relationship = "many-to-many") %>%
@@ -880,7 +880,7 @@ rFunction <- function(data,
       mutate(arrivaldists = arrivaldat) %>%
       st_drop_geometry() %>%
       rename(ID = birdID) %>%
-      select(-c("day_of_arrival"))
+      dplyr::select(-c("day_of_arrival"))
     
     return(outdat)
   }
@@ -968,7 +968,7 @@ rFunction <- function(data,
   if ("var_acc_x" %in% colnames(data)) {
     clustertable %<>% 
       left_join(st_drop_geometry(clustertable_acc) %>% 
-                  select(c("xy.clust", "med_var_x", "med_var_y", "med_var_z", "sd_var_x", "sd_var_y", "sd_var_z")), 
+                  dplyr::select(c("xy.clust", "med_var_x", "med_var_y", "med_var_z", "sd_var_x", "sd_var_y", "sd_var_z")), 
                 by = c("xy.clust", "ID"))
   }
   

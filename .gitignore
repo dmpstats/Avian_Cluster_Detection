@@ -34,3 +34,7 @@ app-configuration.json
 data/raw/AVult_sunset.rds
 data/raw/Tanz_full.rds
 CLUSTER_POSTPROCESS.R
+data/raw/splitbirds2.rds
+data/raw/splitbirds1.rds
+check_output.R
+.env
