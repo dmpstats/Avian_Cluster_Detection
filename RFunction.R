@@ -1009,6 +1009,10 @@ rFunction <- function(data,
     dplyr::select(-"wholeclust_geometry")
   data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
   
+  
+  # Add clustertable as an attribute of the main dataset
+  attr(data, "cluster_tbl") <- clustertable
+  
   # Release outputs
   saveRDS(clustertable, file = appArtifactPath("clustertable.rds")) 
   return(data)
