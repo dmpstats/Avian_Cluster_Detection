@@ -38,3 +38,6 @@ data/raw/splitbirds2.rds
 data/raw/splitbirds1.rds
 check_output.R
 .env
+data/raw/gaia_processed_acc_merged_classified.rds
+data/raw/SA_VfA_MPIAB_processed_acc_merged_classified.rds
+.clustertable.rds
