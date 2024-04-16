@@ -437,7 +437,8 @@ rFunction <- function(data,
     # Add cluster data into main location data:
     data %<>%
       filter(index %!in% xytagdata$index) %>% # remove rows whose clusters need to be updated
-      mt_stack(., xytagdata, .track_combine = "merge") %>% # add them back in with the new update
+      bind_rows(., xytagdata) %>%
+      #mt_stack(., xytagdata, .track_combine = "merge") %>% # add them back in with the new update
       arrange(mt_track_id(.), mt_time(.)) # reorder
 
     
