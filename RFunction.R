@@ -9,6 +9,9 @@ library('stringr')
 library('units')
 library('pbapply')
 
+#' TODO
+#' - Add dependency on (or compute and bind locally) `nightpoint`column
+
 # Shortened 'not in':
 `%!in%` <- Negate(`%in%`)
 
@@ -44,13 +47,13 @@ calcGMedianSF <- function(data) {
 }
 
 rFunction <- function(data,
-                      clusterstart,
-                      clusterend,
+                      clusterstart = NULL,
+                      clusterend = NULL,
                       clusterstep = 1, 
                       clusterwindow = 7, 
                       clustexpiration = 14, 
                       behavsystem = TRUE, 
-                      d,
+                      d = 500,
                       clustercode = "") {
   
   #' --------------------------------------------------------------
@@ -112,6 +115,7 @@ rFunction <- function(data,
   laststep <- FALSE
   rollingstarttime <- Sys.time()
   
+  
   # Begin loop:
   while (laststep == FALSE) {
     
@@ -151,8 +155,9 @@ rFunction <- function(data,
       skipToNext <- TRUE}
     
     # And if using the behavioural classification system, check there is enough non-travelling behaviour:
+    #browser()
     if (behavsystem == TRUE) {
-      if (sum(clusteringData$behav != "STravelling") < 2) { 
+      if (sum(clusteringData$behav != "STravelling", na.rm = TRUE) < 2) { 
         logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough stationary behaviour within clustering period"))
         skipToNext <- TRUE}}
     
@@ -429,7 +434,6 @@ rFunction <- function(data,
         st_centroid() # Find mean location of two centroids (we should change this later)
     }
     
-    
     # Add cluster data into main location data:
     data %<>%
       filter(index %!in% xytagdata$index) %>% # remove rows whose clusters need to be updated
@@ -507,7 +511,6 @@ rFunction <- function(data,
     
     # End of clustering loop
   }
-  
   
   rollingendtime <- Sys.time()
   logger.trace(paste0("CLUSTERING COMPLETE. Time taken: ", 
