@@ -54,11 +54,20 @@ rFunction <- function(data,
                       clustexpiration = 14, 
                       behavsystem = TRUE, 
                       d = 500,
-                      clustercode = "") {
+                      clustercode = "A") {
+  
   
   #' --------------------------------------------------------------
   # 0. Setup & Input Checks -----------------------------------------
 
+  # Check clustercode
+  if (not_null(clustercode)) {
+    logger.trace(paste0("Provided clustercode is ", clustercode))
+    clustercode <- paste0(clustercode, ".")
+  } else {
+    logger.warn("No clustercode provided. Defaulting no clustercode. ")
+    clustercode <- ""
+  }
   
   # Check suitability of start/end inputs
   if(!is.instant(as.Date(clusterstart)) | is.null(clusterstart)) {
@@ -505,6 +514,8 @@ rFunction <- function(data,
     # End of clustering loop
   }
   
+  
+  # data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
   
   # Pass cluster-appended movement data onto next MoveApp:
   return(data)
