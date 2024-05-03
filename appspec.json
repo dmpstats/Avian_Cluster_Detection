@@ -66,13 +66,7 @@
         "name": "dplyr"
       },
       {
-        "name": "magrittr"
-      },
-      {
         "name": "move2"
-      },
-      {
-        "name": "tidyr"
       },
       {
         "name": "Gmedian"
@@ -81,13 +75,10 @@
         "name": "sf"
       },
       {
-        "name": "stringr"
-      },
-      {
         "name": "units"
       },
       {
-        "name": "pbapply"
+        "name": "magrittr"
       }
     ]
   },

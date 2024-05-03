@@ -1,13 +1,10 @@
 library('move2')
 library('lubridate')
 library('dplyr')
-library('magrittr')
-library('tidyr')
 library('Gmedian')
 library('sf')
-library('stringr')
 library('units')
-library('pbapply')
+library('magrittr')
 
 #' TODO
 #' - Add dependency on (or compute and bind locally) `nightpoint`column
