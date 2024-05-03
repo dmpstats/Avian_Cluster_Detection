@@ -46,7 +46,7 @@ calcGMedianSF <- function(data) {
   
 }
 
-rFunction <- function(data,
+rFunction_pre_split <- function(data,
                       clusterstart = NULL,
                       clusterend = NULL,
                       clusterstep = 1, 
@@ -981,13 +981,15 @@ rFunction <- function(data,
   
   # Finally, remove 1-location clusters from tagdata and clustertable
   rem <- clustertable$xy.clust[clustertable$Total == 1]
+  
   data %<>% mutate(
     xy.clust = case_when(
       xy.clust %in% rem ~ NA,
       TRUE ~ xy.clust
-    )
-  ) %>%
+    ) ) %>%
     dplyr::select(-c("ID", "X", "Y"))
+  
+  
   clustertable %<>% filter(xy.clust %!in% rem)
   
   
@@ -995,15 +997,15 @@ rFunction <- function(data,
   #tableendtime <- Sys.time()
   #logger.trace(paste0("Clustertable generation completed. Time taken: ", 
   #                    difftime(tableendtime, tablestarttime, units = "mins"), " mins."))
-
-    clustertable %<>% as.data.frame() %>% st_as_sf() # temporarily convert to DF to add clustercodes (Move object creates errors)
-    logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
+  
+  clustertable %<>% as.data.frame() %>% st_as_sf() # temporarily convert to DF to add clustercodes (Move object creates errors)
+  logger.trace(paste0("Clustertable is size ", object.size(clustertable) %>% format(units = "Mb")))
   
   # Fix to remove overwritten clusters from clustertable:
   logger.trace(paste0("Removing clusters that have since been overwritten in the tagdata: ", 
-                     toString(
-                       clustertable$xy.clust[which(clustertable$xy.clust %!in% data$xy.clust)]
-                     )))
+                      toString(
+                        clustertable$xy.clust[which(clustertable$xy.clust %!in% data$xy.clust)]
+                      )))
   
   # Add clustercode:
   clustertable %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)) %>%
@@ -1011,6 +1013,7 @@ rFunction <- function(data,
     mt_as_track_attribute(c("birds", "mindist_m", "within_25k", "within_50k")) %>%
     st_set_geometry(.$wholeclust_geometry) %>% # change geometry to be whole-cluster centroid (the same location will be shared by several rows)
     dplyr::select(-"wholeclust_geometry")
+  
   data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
   
   
