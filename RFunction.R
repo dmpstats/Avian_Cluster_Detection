@@ -9,34 +9,10 @@ library('magrittr')
 #' TODO
 #' - Add dependency on (or compute and bind locally) `nightpoint`column
 
-# Shortened 'not in':
-`%!in%` <- Negate(`%in%`)
 
-# Function to calculate geometric medians:
-calcGMedianSF <- function(data) {
   
-  if (st_geometry_type(data[1,]) == "POINT") {
-    med <- data %>% 
-      st_coordinates()
-    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
-      rename(x = V1, y = V2) %>%
-      st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
-      st_geometry()
-  }
   
 
-  if (st_geometry_type(data[1,]) == "MULTIPOINT") {
-    med <- data %>% 
-      st_coordinates() %>%
-      as.data.frame() %>%
-      group_by(L1) %>%
-      group_map(
-        ~ Gmedian::Weiszfeld(.)$median 
-      ) %>%
-      do.call(rbind, .) %>%
-      as.data.frame() %>%
-      st_as_sf(coords = colnames(.), crs = st_crs(data)) %>%
-      st_geometry()
   }
   
   return(med)
@@ -516,7 +492,46 @@ rFunction <- function(data,
   
   # Pass cluster-appended movement data onto next MoveApp:
   return(data)
+# Helper Functions ====================================================================
+
+#' //////////////////////////////////////////////////////////////////////////////
+# wee helpers
+not_null <- Negate(is.null)
+`%!in%` <- Negate(`%in%`)
+
   
 }
 
+
+#' //////////////////////////////////////////////////////////////////////////////
+# Geometric medians
+calcGMedianSF <- function(data) {
+  
+  if (st_geometry_type(data[1,]) == "POINT") {
+    med <- data %>% 
+      st_coordinates()
+    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
+      rename(x = V1, y = V2) %>%
+      st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
+      st_geometry()
+  }
+  
+  
+  if (st_geometry_type(data[1,]) == "MULTIPOINT") {
+    med <- data %>% 
+      st_coordinates() %>%
+      as.data.frame() %>%
+      group_by(L1) %>%
+      group_map(
+        ~ Gmedian::Weiszfeld(.)$median 
+      ) %>%
+      do.call(rbind, .) %>%
+      as.data.frame() %>%
+      st_as_sf(coords = colnames(.), crs = st_crs(data)) %>%
+      st_geometry()
+  }
+  
+  return(med)
+  
+}
 
