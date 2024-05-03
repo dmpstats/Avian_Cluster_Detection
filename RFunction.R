@@ -347,6 +347,19 @@ rFunction <- function(data,
         # Match to nearest:
         allocpoints$xy.clust <- tempdat$updID[match(pdists$allocclust, tempdat$existID)]
         
+        
+        #' BC QUESTION: objects `allocpoints` and `pdists`, appear to have no
+        #' bearing in the updating process. Some code missing here? 
+        #' 
+        #' In fact, as its stands, this is a bug, as the main data is not updated
+        #' with the merging clusters detected in this step (step 4. below ignores
+        #' the newly generated cluster names)
+        
+        # BC: FIX? update tracking data
+        updclust_event_idx <- which(xydata$xy.clust %in% names(ids)[u])
+        xydata$xy.clust[updclust_event_idx] <- allocpoints$xy.clust
+        
+        
         # Update clustermap:
         matchingclustermap <- matchingclustermap %>% 
           filter(updID != names(ids)[u]) %>%
