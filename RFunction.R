@@ -6,8 +6,6 @@ library('sf')
 library('units')
 library('magrittr')
 
-#' TODO
-#' - Add dependency on (or compute and bind locally) `nightpoint`column
 
 
 rFunction <- function(data,
@@ -147,7 +145,6 @@ rFunction <- function(data,
   # Begin loop:
   while (laststep == FALSE) {
     
-    
     # If we're on the final step, set the clusterdate equal to final day:
     if (clusterdate >= floor_date(clusterend, unit = "days")) {
       logger.trace(paste0("Current clusterdate ", as.Date(clusterdate), " is beyond final date. Assigning final date, ", as.Date(clusterend)))
@@ -184,7 +181,6 @@ rFunction <- function(data,
       skipToNext <- TRUE}
     
     # And if using the behavioural classification system, check there is enough non-travelling behaviour:
-    #browser()
     if (behavsystem == TRUE) {
       if (sum(clusteringData$behav != "STravelling", na.rm = TRUE) < 2) { 
         logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough stationary behaviour within clustering period"))
@@ -192,20 +188,22 @@ rFunction <- function(data,
     
     # If either of these conditions are met, skip ahead to the next possible clusterdate:
     if (skipToNext == TRUE) {
+      
       # Find minimum following date on which we have data
       clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
         mt_time() %>%
         min() + days(clusterwindow)
+      
       logger.trace(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))
-      next}
-    
+      
+      next
+    }
     
     
     #' ----------------------------------------------------------------------
     # 2. Perform Clustering ----------------------------------------------
     #' Now that we know there is enough data, generate the new clusters
 
-    
     # If using behavioural classification, filter to stationary behaviours:
     if (behavsystem == TRUE) {
       clusterpoints <- filter(clusteringData, behav %!in% c("STravelling", "Unknown"))
@@ -315,6 +313,8 @@ rFunction <- function(data,
     # Check to see if this is true:
     if (length(unique(matchingclustermap$updID)) != nrow(matchingclustermap)) {
       
+      # browser()
+      
       # Retrieve their IDs
       ids <- which(table(matchingclustermap$updID) > 1)
       for (u in 1:length(ids)) {
@@ -356,6 +356,8 @@ rFunction <- function(data,
     # Check to see if this is true:
     if (length(unique(matchingclustermap$existID)) != nrow(matchingclustermap)) {
       
+      #browser()
+      
       # Retrieve their IDs
       ids <- which(table(matchingclustermap$existID) > 1)
       for (u in 1:length(ids)) {
@@ -382,7 +384,9 @@ rFunction <- function(data,
     #' -----------------------------------------------
     ## Merging Clusters: Case 3 ----------------------
     #'
-    #' Pre-existing clusters with no  merges
+    #' Pre-existing clusters with no merges - i.e. those whose centroids are
+    #' >175m away from centroids of clusters detected in current window, meaning
+    #' no locations attributable to these clusters in this window
 
     # Retrieve the existing IDs not being merged:
     existIDs <- existingclust$xy.clust[existingclust$xy.clust %!in% matchingclustermap$existID]
@@ -482,9 +486,10 @@ rFunction <- function(data,
     if (nrow(filter(data, xy.clust %in% updatedClusters$xy.clust)) != 0) {
       
       # Bind necessary data on updated clusters:
-      tempclusts <- filter(data, xy.clust %in% updatedClusters$xy.clust) %>% mutate(
-        datetime = mt_time(.)
-      ) 
+      tempclusts <- data %>%
+        filter(xy.clust %in% updatedClusters$xy.clust) %>% 
+        mutate(datetime = mt_time(.))
+      
       tempclusts %<>%
         group_by(xy.clust) %>%
         summarise(
