@@ -1,14 +1,10 @@
-// cluster
-// appspec.json
-
 {
-
-    "clusterstart": "2023-01-01 00:00:00 UTC",
-    "clusterend": "2023-04-01 00:00:00 UTC",
-    "clusterstep": 10,
-    "clusterwindow": 14,
-    "clustexpiration": 14,
-    "behavsystem": true,
-    "clustercode": "split2",
-    "d": 500
+  "wholedata": false,
+  "clusterstart": "2024-03-02 23:00:00",
+  "clusterstep": 1,
+  "clusterwindow": 8,
+  "clustexpiration": 14,
+  "behavsystem": true,
+  "clustercode": "A",
+  "d": 500
 }
