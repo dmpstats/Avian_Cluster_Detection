@@ -6,28 +6,24 @@ Github repository: *https://github.com/dmpstats/Avian_Cluster_Detection*
 
 ## Description
 
-This MoveApp spatially clusters data over a rolling window, generating data on the cluster's properties (hours spent, number of revisits, number of animals, and so on). Clusters are updated with each time step to simulate real-time identification.
+This MoveApp utilizes a rolling time-window to spatially cluster location events, employing an iterative approach for cluster detection and updating aimed at simulating real-time identification.
 
 ## Documentation
 
-This MoveApp is intended for use on the output of **Behavioural Classification for Vultures,** and its functionality in other workflows is not guaranteed.
+The App employs a spatial agglomerative clustering process on location events, covering either the entire input dataset or a specified time-period within it. This process operates over a rolling time-window that 'closes' clusters after a period of inactivity. The time-window then advances by the chosen time-step, iterativelly reapplying the clustering process until reaching the last timestamp entry or the end date-time of the specified time-period. Cluster detection and updating are performed using the *median location* of clustered events, calculated via the [`Gmedian::Weiszfeld`](https://rdrr.io/cran/Gmedian/man/Gmedian.html) function. Clustered location events are annotated with a cluster ID code, which is appended to the input data as a column named `xy.clust`. 
 
-A spatial agglomerative clustering process is applied to all locations within the specified timeframe, over a rolling-window that 'closes' clusters after a period of inactivity. The rolling window then moves forward by the selected time-step, and repeats the clustering, iteratively until the end of the specified timeframe is reached.
+Note: To use this process with no rolling window (i.e. perform a single clustering step of all input data):
 
-For each location associated with a cluster by this process, the cluster's name is appended to the tracking data as a column named *xy.clust*. At the end of the process, a cluster-table (detailing various cluster attributes) is also generated and released as a *move2* object.
+  1. Select option **Clustering on Entire Data**.
+  2. Specify **Clustering Window** to a number of days longer than the duration of your dataset (in days).
 
-To use this process with no rolling window (i.e. perform a single clustering step of all input data):
 
--   Set the **cluster start date** to the earliest possible date
 
--   Leave the **cluster end date** null: this will default to the final date containing data
 ### MoveApps Worflow Dependencies
 
 Choosing the **Use Behavioural Attribute** option requires the prior deployment of the ['Behavioural Classification for Vultures App'](https://www.moveapps.org/apps/browser/44bb2ffa-7d40-4fad-bff5-1269995ba1a2) ([Readme](https://github.com/dmpstats/Behavioural_Classification_for_Vultures)) in the workflow.
 
--   Set the **cluster window** to a number of days longer than the duration of your dataset (in days)
 
-Please note: the geometry of the outputted clusters is determined by their **median location,** not mean location. This is generated using the GMedian `Weiszfeld` function.
 
 ### Input data
 
