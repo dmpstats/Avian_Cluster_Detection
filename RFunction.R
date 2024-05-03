@@ -10,28 +10,103 @@ library('magrittr')
 #' - Add dependency on (or compute and bind locally) `nightpoint`column
 
 
-  
-  
-
-  }
-  
-  return(med)
-  
-}
-
 rFunction <- function(data,
+                      wholedata = TRUE,
                       clusterstart = NULL,
                       clusterend = NULL,
-                      clusterstep = 1, 
-                      clusterwindow = 7, 
-                      clustexpiration = 14, 
+                      clusterstep = 1L, 
+                      clusterwindow = 7L, 
+                      clustexpiration = 14L, 
                       behavsystem = TRUE, 
-                      d = 500,
+                      d = 500L,
                       clustercode = "A") {
   
   
-  #' --------------------------------------------------------------
-  # 0. Setup & Input Checks -----------------------------------------
+  # 1. Setup & Input Checks -----------------------------------------
+  
+  max_tm <- max(mt_time(data), na.rm = TRUE)
+  min_tm <- min(mt_time(data), na.rm = TRUE) 
+
+  # check on positive integer inputs 
+  is_positive_integer(clusterstep)
+  is_positive_integer(clusterwindow)
+  is_positive_integer(clustexpiration)
+  is_positive_integer(d)
+  
+  # whole data option
+  if(!is.logical(wholedata)) stop("`wholedata` must be logical", call. = FALSE)
+  
+  
+  # Set or check clusterstart and cluesterend, conditional on `wholedata`
+  if(wholedata){
+    logger.info(paste0(
+      "Clustering to be performed over the entire span of the input ",
+      "dataset. App inputs `clusterstart` & `clusterend` will be ignored.")
+    )
+    
+    # Set clusterstart so that first clustering window starts at the very first timepoint in the data
+    clusterstart <- min_tm + days(clusterwindow)
+    clusterend <- max_tm
+    
+  } else{
+    
+    # clusterstart check
+    if(is.null(clusterstart)) {
+      logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to start date ",
+                         "2 weeks before the latest timestamp in input data."))
+      clusterstart <- max_tm - days(14)
+      
+    } else{
+      # parse string input as POSIXct
+      clusterstart <- parse_mvapps_datetime(clusterstart)
+      # check start-point is within time-span covered by data
+      is_clusterbound_within_dt_period(clusterstart, min_tm, max_tm)
+    }
+    
+    # clusterend check
+    if(is.null(clusterend)) {
+      logger.warn(paste0("`clusterend` is set to NULL. Defaulting to end date as ",
+                         "the latest timestamp in input data."))
+      clusterend <- max_tm
+    } else {
+      # parse string input as POSIXct
+      clusterend <- parse_mvapps_datetime(clusterend)
+      # check end-point is within time-span covered by data
+      is_clusterbound_within_dt_period(clusterend, min_tm, max_tm)
+    }
+  }
+    
+  
+  # check clusterwindow Vs clusterstep
+  if(clusterstep > clusterwindow){
+    msg <- paste0(
+      "Specified Clustering Time-step (`clusterstep`) is larger than ",
+      "Clustering Window (`clusterwindow`), which would lead to loss of data. ",
+      "Please make sure time-step <= time-window.")
+    
+    logger.fatal(msg)
+    stop(msg, call. = FALSE) 
+  }
+  
+  
+  # Check behaviour present, if needed
+  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
+    msg <- paste0(
+      "Classified behaviour column 'behav' is not contained in the input data. ",
+      "Unable to perform clustering. Please deploy the App 'Behaviour Classification",
+      "for Vultures' earlier in workflow, before the current App.")
+    
+    logger.fatal(msg)
+    stop(msg, call. = FALSE) 
+  }
+  
+  # check if index column is present (from standardization app), generating it if not
+  if("index" %!in% names(data)){
+    logger.info("'index' column not present in data - adding 'index' based on 'track_id' and 'timestamp'.")
+    data <- mutate(data, index = paste0(mt_track_id(data), " ", mt_time(data)))
+  }
+  
+
 
   # Check clustercode
   if (not_null(clustercode)) {
@@ -42,28 +117,7 @@ rFunction <- function(data,
     clustercode <- ""
   }
   
-  # Check suitability of start/end inputs
-  if(!is.instant(as.Date(clusterstart)) | is.null(clusterstart)) {
-    logger.error(paste0("Start date of clustering ", clusterstart, " is not a valid date Defaulting to start date 2 weeks before final date."))
-    clusterstart <- max(mt_time(data), na.rm = TRUE) - days(14)
-  }
-  if(!is.instant(as.Date(clusterend)) | is.null(clusterend)) {
-    logger.error(paste0("End date of clustering ", clusterend, " is not a valid date Defaulting to end date as most recent timestamp."))
-    clusterend <- max(mt_time(data), na.rm = TRUE)
-  }
   
-  # Check behaviour present, if needed
-  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
-    logger.fatal("Classified behaviour column 'behav' is not contained by input data. Unable to perform clustering. Please use classification MoveApp prior to this stage in the workflow")
-    stop()
-  }
-  
-  # Check if sunset columns are present
-  if ("sunset_timestamp" %in% colnames(data)) {
-    suntimes <- TRUE
-  } else {
-    suntimes <- FALSE
-  }
   
   logger.info(paste0("Clustering between ", clusterstart, " and ", clusterend))
   
@@ -492,6 +546,10 @@ rFunction <- function(data,
   
   # Pass cluster-appended movement data onto next MoveApp:
   return(data)
+}
+
+
+
 # Helper Functions ====================================================================
 
 #' //////////////////////////////////////////////////////////////////////////////
@@ -499,8 +557,90 @@ rFunction <- function(data,
 not_null <- Negate(is.null)
 `%!in%` <- Negate(`%in%`)
 
+#' //////////////////////////////////////////////////////////////////////////////
+#' input validator for positive integer
+is_positive_integer <- function(x){
+  if(is.null(x)){
+    stop(paste0("App input `", deparse(substitute(x)), "` specified as NULL. `", 
+                deparse(substitute(x)), "` must be a positive integer."), 
+         call. = FALSE)
+    
+  } else if(x < 1){
+    stop(paste0("App input `", deparse(substitute(x)), "` must be a positive integer."), call. = FALSE)
+    
+  } else if(!is.integer(x)){
+    stop(paste0("App input `", deparse(substitute(x)), "` must be a positive integer."), call. = FALSE)
+    
+  }
+}
+
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' input validator for clustering start/end timestamp being within time period covered by data
+#' 
+#' @param cluster_bound POSIXct, an end/start timestamp within which clustering is to be performed
+#' @param min_time POSIXct, the minimum/earliest timestamp of the data under clustering
+#' @param max_time POSIXct, the maximum/latest timestamp of the data under clustering
+#' 
+is_clusterbound_within_dt_period <- function(cluster_bound, min_time, max_time){
+  
+  if(length(cluster_bound) != 1) stop("cluster_bound must be of length 1", call. = FALSE)
+  if(!is.POSIXct(cluster_bound)) stop("cluster_bound must be a POSIXct object", call. = FALSE)
+  if(!is.POSIXct(min_time)) stop("min_time must be a POSIXct object", call. = FALSE)
+  if(!is.POSIXct(max_time)) stop("max_time must be a POSIXct object", call. = FALSE)
+  
+  if(!dplyr::between(cluster_bound, min_time, max_time)){
+    msg <- paste0(
+      "App input `", deparse(substitute(cluster_bound)) ,"` is outside the range of timepoints ",
+      "covered by the input data. Please provide timepoint whithin the range ['", 
+      min_time, "', '", max_time, "'].")
+    
+    logger.fatal(msg)
+    stop(msg, call. = FALSE)
+  }  
   
 }
+
+
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' Converter of date-time string to a POSIXct object based on expected format
+#' under MoveApps. Input validation also included
+parse_mvapps_datetime <- function(x){
+  
+  msg <- paste0(
+    "App input `", deparse(substitute(x)), "` must be a date-time string in ISO 8601 ",
+    "format with timezone UTC, e.g. '2017-12-30 23:59:59'. Please provide a valid string."
+  )
+  
+  if(is.POSIXct(x)){
+    dt_tm <- lubridate::with_tz(x, tzone = "UTC")
+    return(dt_tm)
+  }
+  
+  
+  if(!is.character(x)){
+    logger.fatal(msg)
+    stop(msg, call. = FALSE)
+  }
+  
+  # parse string as POSIXct, respecting ISO 8601 format, as 
+  # specified in https://docs.moveapps.org/#/appspec/current/settings/timestamp
+  dt_tm <- tryCatch(
+    as.POSIXct(
+      x, 
+      tz = "UTC", 
+      tryFormats = c("%Y-%m-%dT%H:%M:%OSZ", 
+                     "%Y-%m-%d %H:%M:%OS")),
+    error = \(cond){
+      logger.fatal(msg)
+      stop(msg, call. = FALSE)  
+    }
+  )
+  
+  return(dt_tm)
+}
+
 
 
 #' //////////////////////////////////////////////////////////////////////////////
