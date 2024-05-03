@@ -232,6 +232,10 @@ rFunction <- function(data,
     cid <- as.vector(which(table(clusterpoints$clust) < 3))
     genclustertable %<>% filter(clust %!in% cid)
     
+    if(nrow(genclustertable) == 0){
+      logger.trace(paste0(as.Date(clusterdate), ":     Dismissing all clusters detected in current window as none contains more than 3 points."))
+      next
+    } 
     
     #' -----------------------------------------------------------------
     ## Append cluster data ---------------------------------------------
