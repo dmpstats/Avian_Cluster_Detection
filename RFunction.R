@@ -244,6 +244,9 @@ rFunction <- function(data,
     clusts <- genclustertable %>%
       group_by(clust) %>%
       summarise(geometry = st_combine(geometry))
+    
+    #' BC QUESTION: Maybe next could streamlined via sf::st_centroid()? Any particular 
+    #' reason want to stick to Weiszfeld's algorithm?
     for (j in 1:nrow(clusts)) {
       clustid <- clusts$clust[j]
       clusts$geometry[j] <- calcGMedianSF(clusts[j,])
