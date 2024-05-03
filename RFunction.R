@@ -161,12 +161,13 @@ rFunction <- function(data,
     #'  Here, filter to the relevant window and import
     #'  data from the previous rolling-window (if available)
     
-    # Import cluster data from previous run
-    # This will contain only the key information for the clustering rolling-window 
-    # i.e. location data and timestamp
-    if (!is.null(tempclustertable)) {
-      clusterDataDwnld <- tempclustertable
-    }
+    
+    # # Import cluster data from previous run
+    # # This will contain only the key information for the clustering rolling-window 
+    # # i.e. location data and timestamp
+    # if (!is.null(tempclustertable)) {
+    #   clusterDataDwnld <- tempclustertable
+    # }
     
     # Filter the location data down to our clustering window
     clusteringData <- filter(eventdata,
