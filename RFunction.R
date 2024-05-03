@@ -287,7 +287,7 @@ rFunction <- function(data,
       
       # Generate distance matrix:
       # Rows are existing clusts, columns are new clusts
-      dists <- st_distance(existingclust, newclust) %>% units::drop_units()
+      dists <- st_distance(existingclust, newclust) |> units::set_units("m") |> units::drop_units() # ensuring dist is in meters given 175m cut-off applied below
       rownames(dists) <- existingclust$xy.clust
       colnames(dists) <- newclust$xy.clust
       
