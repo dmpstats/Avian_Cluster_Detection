@@ -541,10 +541,34 @@ rFunction <- function(data,
     # End of clustering loop
   }
   
+  # Output processing ------------------
   
-  # data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
+  if("xy.clust" %!in% names(data)){
+    logger.warn(paste0(
+      "No clusters detected. Generating empty column 'xy.clust', ",
+      "which is a dependency of downstream cluster-related Apps"))
+    
+    data$xy.clust <- NA
+    
+  }else{
+    
+    # identify 1-location clusters
+    rem <- dplyr::count(data, xy.clust) |> 
+      filter(n == 1) |> 
+      pull(xy.clust)
+    
+    data <- data |> 
+      mutate(
+        # drop cluster id for 1 location clusters
+        xy.clust = ifelse(xy.clust %in% rem, NA, xy.clust),
+        # concatenate user-specified code as the prefix of cluster_id
+        xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)
+        )  |> 
+      # drop local auxiliary columns
+      dplyr::select(-c("ID", "X", "Y"))
+  }
   
-  # Pass cluster-appended movement data onto next MoveApp:
+  
   return(data)
 }
 
