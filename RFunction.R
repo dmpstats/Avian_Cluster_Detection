@@ -137,7 +137,6 @@ rFunction <- function(data,
   # Set up the initial case, in which we have no roll-over of cluster data:
   clusterdate <- floor_date(clusterstart, unit = "days")
   clusterDataDwnld <- NULL
-  tempclustertable <- NULL
   laststep <- FALSE
   rollingstarttime <- Sys.time()
   
@@ -158,13 +157,6 @@ rFunction <- function(data,
     #'  Here, filter to the relevant window and import
     #'  data from the previous rolling-window (if available)
     
-    
-    # # Import cluster data from previous run
-    # # This will contain only the key information for the clustering rolling-window 
-    # # i.e. location data and timestamp
-    # if (!is.null(tempclustertable)) {
-    #   clusterDataDwnld <- tempclustertable
-    # }
     
     # Filter the location data down to our clustering window
     clusteringData <- filter(eventdata,
