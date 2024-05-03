@@ -347,8 +347,9 @@ rFunction <- function(data,
         # Match to nearest:
         allocpoints$xy.clust <- tempdat$updID[match(pdists$allocclust, tempdat$existID)]
         
-        # Remove from clustermap:
-        matchingclustermap %<>% filter(updID != names(ids)[u]) %>%
+        # Update clustermap:
+        matchingclustermap <- matchingclustermap %>% 
+          filter(updID != names(ids)[u]) %>%
           bind_rows(tempdat)
         }
       }
