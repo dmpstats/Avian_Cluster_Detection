@@ -3,21 +3,21 @@
     {
       "id": "wholedata",
       "name": "Clustering on Entire Data",
-      "description": "Choose whether to perform clustering over the entire span of the input data. If selected, the Starting and End dates of clustering period specified below will be ignored.",
+      "description": "Choose whether to perform clustering over the entire span of the input data. If selected, clustering Start and End Timepoints specified below will be ignored.",
       "defaultValue": true,
       "type": "CHECKBOX"
     },
     {
       "id": "clusterstart",
-      "name": "Start Date for Clustering",
+      "name": "Clustering Start Timepoint",
       "description": "Start date-time of period within input data to be considered for clustering. If `NULL` (default), the start date is set to the earliest timestamp in input data. Note: This input is only considered if 'Clustering on Entire Data' is not selected.",
       "defaultValue": null,
       "type": "INSTANT"
     },
     {
       "id": "clusterend",
-      "name": "End Date for Clustering",
-      "description": "Final date-time of period to be considered for clustering. If `NULL` (default), end date is set the latest timestamp in input data.",
+      "name": "Clustering End Timepoint",
+      "description": "Final date-time of period within input data to be considered for clustering. If `NULL` (default), the end date is set to the latest timestamp in input data. Note: This input is only considered if 'Clustering on Entire Data' is not selected.",
       "defaultValue": null,
       "type": "INSTANT"
     },

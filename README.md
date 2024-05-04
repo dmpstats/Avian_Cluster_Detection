@@ -42,9 +42,9 @@ None
 
 **Clustering on Entire Data** (`wholedata`): Choose whether to perform clustering over the entire span of the input data. If selected, the Starting and End dates of clustering period specified below will be ignored.
 
-**Start Date for Clustering** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start date is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
+**Clustering Start Timepoint** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start date is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
 
-**End Date for Clustering** (`clusterend`): Final date-time of period to be considered for clustering. If `NULL` (default), end date is set the latest timestamp in input data.
+**Clustering End Timepoint** (`clusterend`): Final date-time of period within input data to apply clustering. If `NULL` (default), the end date is set to the latest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected.
 
 **Clustering Window** (`clusterwindow`) : Duration, in number of days, of the rolling time-window within which clustering is conducted. For example, setting this value to 7 (default) means clustering is applied iteratively to a 7-day rolling window.
 
@@ -66,7 +66,7 @@ The app will halt processing and return an error under the following conditions:
 
 - Selecting **Use Behavioural Attribute** when column `behav` is not present in the input dataset. Column `behav` is created in the App 'Behavioural Classification for Vultures', which must be deployed earlier in the workflow.
 
-- Specifying a **Start** or **End Date for Clustering** outside the time-period covered by the input data.
+- Specifying a **Clustering Start** or **Clustering End Timepoint** outside the time-period covered by the input data.
 
 - Selecting a **Clustering Time-step** larger than **Clustering Window**, as that would lead to data being skipped between consecutive steps of the iterative clustering process.
 
@@ -75,6 +75,6 @@ In addition, if the input data has significantly large or small gaps between eve
 
 ### Null or error handling
 
-- **Start Date for Clustering**: If `NULL`, start date will be set to two weeks prior to the latest timestamp of the input data.
+- **Clustering Start Timepoint**: If `NULL`, start date will be set to two weeks prior to the latest timestamp of the input data.
 
-- **End Date for Clustering**: If `NULL`, end date will be set to the latest timestamp of the input data.
+- **Clustering End Timepoint**: If `NULL`, end date will be set to the latest timestamp of the input data.
