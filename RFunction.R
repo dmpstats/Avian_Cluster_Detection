@@ -198,7 +198,6 @@ rFunction <- function(data,
     #'  Here, filter to the relevant window and import
     #'  data from the previous rolling-window (if available)
     
-    
     # Filter the location data down to our clustering window
     clusteringData <- filter(eventdata,
                              # Take the number of days we need for clustering:
@@ -219,15 +218,18 @@ rFunction <- function(data,
         logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough stationary behaviour within clustering period"))
         skipToNext <- TRUE}}
     
-    # If either of these conditions are met, skip ahead to the next possible clusterdate:
+    # If either of these conditions are met skip ahead to the next iteration
     if (skipToNext == TRUE) {
-      
-      # Find minimum following date on which we have data
-      clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
-        mt_time() %>%
-        min() + days(clusterwindow)
-      
-      logger.trace(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))
+      # if not the last step, set next possible clusterdate 
+      if(laststep == FALSE){
+        # Find minimum following date on which we have data, using it to reset the
+        # clusterdate so that it comprises the length of the clustering time-window
+        clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
+          mt_time() %>%
+          min() + days(clusterwindow)
+        
+        logger.trace(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))  
+      }
       
       next
     }
