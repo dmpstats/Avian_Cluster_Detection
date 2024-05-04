@@ -50,9 +50,14 @@ rFunction <- function(data,
     
     # clusterstart check
     if(is.null(clusterstart)) {
-      logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to start date ",
-                         "2 weeks before the latest timestamp in input data."))
-      clusterstart <- max_tm - days(14)
+      # logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to start date ",
+      #                    "2 weeks before the latest timestamp in input data."))
+      # clusterstart <- max_tm - days(14)
+      
+      # if clusterstart is NULL, use the first timepoint as start of clustering period
+      logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to clustering start timepoint ",
+                         "as the earliest timestamp in input data."))
+      clusterstart <- min_tm
       
     } else{
       # parse string input as POSIXct

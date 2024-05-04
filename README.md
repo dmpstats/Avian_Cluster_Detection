@@ -42,7 +42,7 @@ None
 
 **Clustering on Entire Data** (`wholedata`): Choose whether to perform clustering over the entire span of the input data. If selected, the Starting and End dates of clustering period specified below will be ignored.
 
-**Start Date for Clustering** (`clusterstart`) : Start date-time of period to be considered for clustering. If `NULL` (default), start date is set to 2 weeks before the latest timestamp in input data. 
+**Start Date for Clustering** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start date is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
 
 **End Date for Clustering** (`clusterend`): Final date-time of period to be considered for clustering. If `NULL` (default), end date is set the latest timestamp in input data.
 
