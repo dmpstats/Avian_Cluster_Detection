@@ -127,10 +127,55 @@ test_that("output always have column 'xy.clust', even when no clusters found", {
 
 
 
+test_that("clustering on subset of data produces partially clustered output", {
+  
+  tmstmp_start <- floor_date(max(test_sets$nam$timestamp), unit = "10 hour") - days(8)
+  tmstmp_end <- max(test_sets$nam$timestamp) - days(2) + hours(2) + minutes(10) - seconds(27)
+  
+  output <- rFunction(
+    data = test_sets$nam, 
+    wholedata = FALSE, 
+    clusterstart = tmstmp_start,
+    clusterend = tmstmp_end,
+    clusterwindow = 4L, 
+    clusterstep = 2L)
+  
+  # no clusters on data earlier than clusterstart
+  expect_true(
+    actual |> 
+      filter(timestamp <  tmstmp_start) |> 
+      pull(xy.clust) |> 
+      is.na() |> 
+      all()
+    )
+  
+  # no clusters on data earlier than clusterend
+  expect_true(
+    actual |> 
+      filter(timestamp >  tmstmp_end) |> 
+      pull(xy.clust) |> 
+      is.na() |> 
+      all()
+  )
+  
+  #  clusters on subset of data between clusterstart & clusterend
+  expect_false(
+    actual |> 
+      filter(between(timestamp, tmstmp_start, tmstmp_end)) |> 
+      pull(xy.clust) |> 
+      is.na() |> 
+      all()
+  )
+  
+})
+
+
+
+
 
 test_that("Expected clustering outcome has not changed", {
   
-  local_edition(3)
+  testthat::local_edition(3)
   
   # tanzania
   expect_snapshot_value(

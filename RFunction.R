@@ -37,13 +37,14 @@ rFunction <- function(data,
   
   # Set or check clusterstart and cluesterend, conditional on `wholedata`
   if(wholedata){
+    
     logger.info(paste0(
       "Clustering to be performed over the entire span of the input ",
       "dataset. App inputs `clusterstart` & `clusterend` will be ignored.")
     )
     
-    # Set clusterstart so that first clustering window starts at the very first timepoint in the data
-    clusterstart <- min_tm + days(clusterwindow)
+    # Apply clustering to all data (i.e. from first to last timepoint)
+    clusterstart <- min_tm
     clusterend <- max_tm
     
   } else{
@@ -103,7 +104,8 @@ rFunction <- function(data,
     stop(msg, call. = FALSE) 
   }
   
-  # check if index column is present (from standardization app), generating it if not
+  
+  # check if index column is present (from standardization app), generating it otherwise
   if("index" %!in% names(data)){
     logger.info("'index' column not present in data - adding 'index' based on 'track_id' and 'timestamp'.")
     data <- mutate(data, index = paste0(mt_track_id(data), " ", mt_time(data)))
@@ -122,13 +124,10 @@ rFunction <- function(data,
   
   
   
-  logger.info(paste0("Clustering between ", clusterstart, " and ", clusterend))
+  logger.info(paste0("Proceeding to clustering between ", clusterstart, " and ", clusterend))
   
-  # Filter to relevant time window for overall clustering:
-  clusterstart %<>% as_date()
-  clusterend %<>% as_date()
-  eventdata <- data %>%
-    filter(between(mt_time(data), clusterstart - days(clusterwindow), clusterend + days(1)))
+  # Subset main data to period chosen for clustering
+  eventdata <- data %>% filter(between(mt_time(data), clusterstart, clusterend))
   
   
   #' ------------------------------------------------------------------
@@ -137,11 +136,14 @@ rFunction <- function(data,
   #'  Operate on a iterative rolling-window basis starting from clusterstart
   #'  We increment by clusterstep (in days) and re-cluster until we reach the clusterend
   #'  
-  #'  'clusterdate' parameter will define the final day of data we are currently clustering up to
+  #' 'clusterdate' denotes the last timestamp in the data subset captured by the
+  #' rolling time-window at each step that is being submitted to clustering
 
+  # Set up the initial case, in which we have no roll-over of cluster data, that
+  # is the timestamp from start date-time that will yield the time-interval
+  # satisfying the length of the clustering time-window
+  clusterdate <- clusterstart + days(clusterwindow)
   
-  # Set up the initial case, in which we have no roll-over of cluster data:
-  clusterdate <- floor_date(clusterstart, unit = "days")
   clusterDataDwnld <- NULL
   laststep <- FALSE
   rollingstarttime <- Sys.time()
@@ -151,12 +153,11 @@ rFunction <- function(data,
   while (laststep == FALSE) {
     
     # If we're on the final step, set the clusterdate equal to final day:
-    if (clusterdate >= floor_date(clusterend, unit = "days")) {
+    if (clusterdate >= clusterend) {
       logger.trace(paste0("Current clusterdate ", as.Date(clusterdate), " is beyond final date. Assigning final date, ", as.Date(clusterend)))
-      clusterdate <- floor_date(clusterend, unit = "days")
+      clusterdate <- clusterend
       laststep <- TRUE
     }
-    
     
     #' -----------------------------------------------------------------------
     ### 2.1. Data Setup and Import                        ---------------------
