@@ -20,7 +20,7 @@ rFunction <- function(data,
                       clustercode = "A") {
   
   
-  # 1. Setup & Input Checks -----------------------------------------
+  ## 1. Setup & Input Checks -----------------------------------------
   
   max_tm <- max(mt_time(data), na.rm = TRUE)
   min_tm <- min(mt_time(data), na.rm = TRUE) 
@@ -127,8 +127,9 @@ rFunction <- function(data,
   
   
   #' ------------------------------------------------------------------
-  # Clustering Loop
-  #'  Operate on a rolling-window basis starting from clusterstart
+  ##  2. Clustering Loop -----
+  #' -----------------------------------------------------------------
+  #'  Operate on a iterative rolling-window basis starting from clusterstart
   #'  We increment by clusterstep (in days) and re-cluster until we reach the clusterend
   #'  
   #'  'clusterdate' parameter will define the final day of data we are currently clustering up to
@@ -153,7 +154,8 @@ rFunction <- function(data,
     
     
     #' -----------------------------------------------------------------------
-    #' 1. Data Setup and Import ----------------------------------------------
+    ### 2.1. Data Setup and Import                        ---------------------
+  
     #'  Here, filter to the relevant window and import
     #'  data from the previous rolling-window (if available)
     
@@ -192,8 +194,9 @@ rFunction <- function(data,
     }
     
     
-    #' ----------------------------------------------------------------------
-    # 2. Perform Clustering ----------------------------------------------
+    #'  ----------------------------------------------------------
+    ### 2.2. Perform Clustering                        -----------
+    
     #' Now that we know there is enough data, generate the new clusters
 
     # If using behavioural classification, filter to stationary behaviours:
@@ -230,7 +233,8 @@ rFunction <- function(data,
     } 
     
     #' -----------------------------------------------------------------
-    ## Append cluster data ---------------------------------------------
+    #### Append cluster data ---------------------------------------------
+    
     # Generate a median location for each centroid:
     
     clusts <- genclustertable %>%
@@ -238,7 +242,7 @@ rFunction <- function(data,
       summarise(geometry = st_combine(geometry))
     
     #' BC QUESTION: Maybe next could streamlined via sf::st_centroid()? Any particular 
-    #' reason want to stick to Weiszfeld's algorithm?
+    #' reason we want to stick to Weiszfeld's algorithm?
     for (j in 1:nrow(clusts)) {
       clustid <- clusts$clust[j]
       clusts$geometry[j] <- calcGMedianSF(clusts[j,])
@@ -257,7 +261,7 @@ rFunction <- function(data,
     
     
     #' ----------------------------------------------------
-    # 3. Identify Matching Clusters ----------------------
+    ### 2.3. Identify Matching Clusters ----------------------
   
     newclust <- clusts
     logger.trace(paste0(as.Date(clusterdate), 
@@ -277,6 +281,7 @@ rFunction <- function(data,
         filter(lastdatetime + days(clustexpiration) > clusterdate - days(clusterwindow)) %>%
         arrange(xy.clust) 
       
+
       # Generate distance matrix:
       # Rows are existing clusts, columns are new clusts
       dists <- st_distance(existingclust, newclust) |> units::set_units("m") |> units::drop_units() # ensuring dist is in meters given 175m cut-off applied below
@@ -303,7 +308,10 @@ rFunction <- function(data,
     
     
     #' -----------------------------------------------
-    ## Merging Clusters: Case 1 ----------------------
+    ###  2.4 Merging Clusters     ----------
+    #' ----------------------------------------------
+    
+    #### Case 1: multiple-to-one ----------------------
     #'
     #' Multiple old clusters -> 1 new cluster
     #' In this case, we want to re-allocate the constituent locations
@@ -359,8 +367,8 @@ rFunction <- function(data,
         }
       }
     
-    #' -----------------------------------------------
-    ## Merging Clusters: Case 2 ----------------------
+    
+    #### Case 2: one-to-multiple ----------------------
     #'
     #' 1 old cluster -> multiple new clusters
     #' In this case, we just want to keep the old cluster
@@ -394,8 +402,8 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(matchingclustermap), "  matched to existing clusters"))
     
     
-    #' -----------------------------------------------
-    ## Merging Clusters: Case 3 ----------------------
+    
+    ####  Case 3: pre-existing clusters ----------------------
     #'
     #' Pre-existing clusters with no merges - i.e. those whose centroids are
     #' >175m away from centroids of clusters detected in current window, meaning
@@ -416,8 +424,8 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(existclustermap), "  clusters not matched"))
     
     
-    #' -----------------------------------------------
-    ## Merging Clusters: Case 4 ----------------------
+    
+    #### Case 4: new clusters ----------------------
     #'
     #' New clusters with no previous match (didn't previously exist)
     
@@ -440,7 +448,7 @@ rFunction <- function(data,
     
     
     #' ----------------------------------------------
-    # 4. Perform Matching ----------------------------
+    ### 2.4. Perform Matching ----------------------------
     
     # Combine the three merge tables (and an option for NA clusters):
     updatedclustermap <- rbind(
@@ -489,7 +497,8 @@ rFunction <- function(data,
 
     
     #' ----------------------------------------------------
-    # 5. Create TEMPORARY clustertable ----------------------
+    ### 2.5. Create TEMPORARY clustertable       ----------
+    #'
     # This will contain only the essential information for
     # cluster-updating: location, time, clustID
     
@@ -523,7 +532,7 @@ rFunction <- function(data,
     
     
     #' -----------------------------------------------------------------------
-    # 6. Return other clusters to the dataset ----------------------------------
+    ### 2.6. Return other clusters to the dataset             ---------------
     logger.trace(paste0(as.Date(clusterdate), ":     Merging back into clusterDataDwnld"))
     
     if (!is.null(clusterDataDwnld)) {
@@ -547,8 +556,8 @@ rFunction <- function(data,
     
 
     
-    #' ----------------------------------------------------
-    # 7. Generate output & move on rolling window -----------
+    #' ------------------------------------------------------------------
+    ### 2.7. Generate output & move on rolling window        -----------
     
     # Log progress:
     logger.trace(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(clusterDataDwnld), " cumulative clusters generated"))
@@ -560,7 +569,7 @@ rFunction <- function(data,
     # End of clustering loop
   }
   
-  # Output processing ------------------
+  ## 3. Output processing ------------------
   
   if("xy.clust" %!in% names(data)){
     logger.warn(paste0(
@@ -587,6 +596,7 @@ rFunction <- function(data,
       dplyr::select(-c("ID", "X", "Y"))
   }
   
+  logger.info("That's it - Finished Clustering!")
   
   return(data)
 }
