@@ -79,7 +79,40 @@ rFunction <- function(data,
       is_clusterbound_within_dt_period(clusterend, min_tm, max_tm)
     }
   }
-    
+  
+  
+  # check clusterstart vs clusterend
+  if(clusterstart >= clusterend){
+    msg <- paste0(
+      "Clustering Start Date-time (`clusterstart`) '", clusterstart,"' is equal, or exceeds, the ",
+      "Clustering End Date-time (`clusterend`) '", clusterend, "'. Please ensure ",
+      "that Start Date-time < End Date-time.")
+
+    logger.fatal(msg)
+    stop(msg, call. = FALSE)
+  }
+
+  
+  # check clusterwindow Vs clustering timespan
+  clustering_timespan <- round(difftime(clusterend, clusterstart, units = "days"), 2)
+
+  if(clusterwindow > clustering_timespan){
+    #   logger.warn(paste0(
+    #     "`clusterwindow` is larger than period defined to apply clustering (i.e. ",
+    #     "`clusterwindow` > clusterend` - `clusterstart`). Beware clustering will ",
+    #     "be applied to a rolling time-window effectively smaller than the chosen ",
+    #     "`clusterwindow`."
+    #   ))
+
+    logger.warn(paste0(
+      "Specified `clusterwindow` of ", clusterwindow, " days exceeds the available ", 
+      clustering_timespan, "-day timespan of data being clustered. Therefore, clustering will ",
+      "occur only once whithin a shorter time-window, without a rolling window."
+    ))
+  }
+  
+  
+  
   
   # check clusterwindow Vs clusterstep
   if(clusterstep > clusterwindow){

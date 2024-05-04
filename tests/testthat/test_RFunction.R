@@ -83,6 +83,14 @@ test_that("input validation is doing it's job", {
               clusterend = "9999-12-31 22:07:04")
   )
   
+  # `clusterstart` exceeds `clusterend`
+  expect_error(
+    rFunction(test_sets$wcs, 
+              wholedata = FALSE, 
+              clusterstart = max(test_sets$wcs$timestamp) - days(1), 
+              clusterend = max(test_sets$wcs$timestamp) - days(2)), 
+    "Clustering Start Date-time \\(`clusterstart`\\) '2024-03-13 22:00:00' is equal, or exceeds, the Clustering End Date-time "
+  )
   
   # other inputs
   expect_error(
