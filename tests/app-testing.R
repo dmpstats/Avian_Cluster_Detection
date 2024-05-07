@@ -33,7 +33,7 @@ testthat::test_file("tests/testthat/test_RFunction.R")
 
 out_dt_nam <- rFunction(
   data = test_dt$nam, 
-  wholedata = TRUE, 
+   
   clusterwindow = 10L, 
   clusterstep = 2L)
 
@@ -46,7 +46,6 @@ out_dt_nam <- rFunction(
 #' 
 out_dt_savahn <- rFunction(
   data = test_dt$savahn, 
-  wholedata = TRUE, 
   clusterwindow = 5L, 
   clusterstep = 1L)
 
@@ -58,7 +57,6 @@ out_dt_savahn <- rFunction(
 #' 
 out <- rFunction(
   data = test_dt$ken_tnz, 
-  wholedata = TRUE, 
   clusterwindow = 4L, 
   clusterstep = 1L)
 
@@ -71,7 +69,6 @@ out <- rFunction(
 #' 
 out_no_rolling <- rFunction(
   data = test_dt$savahn,
-  wholedata = TRUE,
   clusterstep = 2L, 
   clusterwindow = as.integer(ceiling(diff(range(test_dt$savahn$timestamp), units = "days"))), 
   clustexpiration = 8L, 
@@ -91,12 +88,12 @@ out_no_rolling |>
 
 
 
+
 #' --------------------------
 #' Demonstrating that expiration cut-off shouldn't be less than length of window
 #' 
 out_exp_lessthan_wdw <- rFunction(
   data = test_dt$savahn,
-  wholedata = TRUE,
   clusterstep = 2L, 
   clusterwindow = 10L, 
   clustexpiration = 5L, 
@@ -121,7 +118,6 @@ out_exp_lessthan_wdw |>
 #' 
 out_exp_morethan_wdw <- rFunction(
   data = test_dt$savahn,
-  wholedata = TRUE,
   clusterstep = 2L, 
   clusterwindow = 10L, 
   clustexpiration = 12L, 
@@ -144,7 +140,6 @@ out_exp_morethan_wdw |>
 #' 
 out_exp_morethan_wdw_lrgstep <- rFunction(
   data = test_dt$savahn,
-  wholedata = TRUE,
   clusterstep = 5L, 
   clusterwindow = 10L, 
   clustexpiration = 12L, 
@@ -168,7 +163,6 @@ out_exp_morethan_wdw_lrgstep |>
 # 4 days
 out_dt_wndw4 <- rFunction(
   data = test_dt$wcs,
-  wholedata = TRUE,
   clusterstep = 2L, 
   clusterwindow = 4L, 
   clustercode = "A")
@@ -198,7 +192,6 @@ out_dt_wndw4 |>
 # 12 days
 out_dt_wndw12 <- rFunction(
   data = test_dt$wcs,
-  wholedata = TRUE,
   clusterstep = 2L, 
   clusterwindow = 12L, 
   clustercode = "A")
@@ -230,7 +223,6 @@ out_dt_wndw12 |>
 
 out_dt_stp1 <- rFunction(
   data = test_dt$ken_tnz,
-  wholedata = TRUE,
   clusterstep = 1L, 
   clustercode = "A")
 
@@ -257,7 +249,6 @@ out_dt_stp1 |>
 # 5-day time-step
 out_dt_stp5 <- rFunction(
   data = test_dt$ken_tnz,
-  wholedata = TRUE,
   clusterstep = 5L, 
   clustercode = "A")
 
@@ -290,7 +281,6 @@ out_dt_stp5 |>
 
 out_dt_d500 <- rFunction(
   data = test_dt$nam,
-  wholedata = TRUE,
   d = 500L,
   clustercode = "A")
 
@@ -317,7 +307,6 @@ out_dt_d500 |>
 
 out_dt_d100 <- rFunction(
   data = test_dt$nam,
-  wholedata = TRUE,
   d = 100L,
   clustercode = "A")
 
@@ -449,7 +438,6 @@ out_dt_sa_vfa |>
 # standard dataset with default inputs
 run_sdk(
   data = test_dt$sa_vfa,
-  wholedata = TRUE,
   clusterstep = 1L, 
   clusterwindow = 7L, 
   clustexpiration = 14L, 
@@ -465,24 +453,8 @@ table(output$xy.clust)
 # no need to input strict integers 
 run_sdk(
   data = test_dt$gaia,
-  wholedata = FALSE,
   clusterstep = 1, 
   clusterwindow = 8, 
-  clustexpiration = 14, 
-  behavsystem = TRUE, 
-  d = 500L,
-  clustercode = "A")
-
-output <- readRDS("data/output/output.rds"); output
-table(output$xy.clust)
-
-
-
-# default `wholedata`
-run_sdk(
-  data = test_dt$wcs,
-  clusterstep = 3, 
-  clusterwindow = 10, 
   clustexpiration = 14, 
   behavsystem = TRUE, 
   d = 500L,
@@ -496,7 +468,6 @@ table(output$xy.clust)
 # pass on strings to clusterstart/clusterend
 run_sdk(
   data = test_dt$gaia,
-  wholedata = FALSE,
   clusterstart = "2024-03-02 23:00:00",
   clusterstep = 1, 
   clusterwindow = 8, 

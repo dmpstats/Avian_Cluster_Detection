@@ -39,9 +39,6 @@ None
 
 ### Settings
 
-
-**Clustering on Entire Data** (`wholedata`): Choose whether to perform clustering over the entire span of the input data. If selected, the Starting and End dates of clustering period specified below will be ignored.
-
 **Clustering Start Timepoint** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start timepoint is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
 
 **Clustering End Timepoint** (`clusterend`): Final date-time of period within input data to apply clustering. If `NULL` (default), the end timepoint is set to the latest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected.

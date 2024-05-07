@@ -1,5 +1,4 @@
 {
-  "wholedata": false,
   "clusterstart": "2024-03-02 23:00:00",
   "clusterstep": 1,
   "clusterwindow": 8,

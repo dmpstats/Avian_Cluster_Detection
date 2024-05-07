@@ -9,7 +9,6 @@ library('magrittr')
 
 
 rFunction <- function(data,
-                      wholedata = TRUE,
                       clusterstart = NULL,
                       clusterend = NULL,
                       clusterstep = 1L, 
@@ -31,54 +30,36 @@ rFunction <- function(data,
   is_positive_integer(clustexpiration)
   is_positive_integer(d)
   
-  # whole data option
-  if(!is.logical(wholedata)) stop("`wholedata` must be logical", call. = FALSE)
-  
-  
-  # Set or check clusterstart and cluesterend, conditional on `wholedata`
-  if(wholedata){
+  # clusterstart check
+  if(is.null(clusterstart)) {
+    # logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to start date ",
+    #                    "2 weeks before the latest timestamp in input data."))
+    # clusterstart <- max_tm - days(14)
     
-    logger.info(paste0(
-      "Clustering to be performed over the entire span of the input ",
-      "dataset. App inputs `clusterstart` & `clusterend` will be ignored.")
-    )
-    
-    # Apply clustering to all data (i.e. from first to last timepoint)
+    # if clusterstart is NULL, use the first timepoint as start of clustering period
+    logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to clustering start timepoint ",
+                       "as the earliest timestamp in input data."))
     clusterstart <- min_tm
-    clusterend <- max_tm
     
   } else{
-    
-    # clusterstart check
-    if(is.null(clusterstart)) {
-      # logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to start date ",
-      #                    "2 weeks before the latest timestamp in input data."))
-      # clusterstart <- max_tm - days(14)
-      
-      # if clusterstart is NULL, use the first timepoint as start of clustering period
-      logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to clustering start timepoint ",
-                         "as the earliest timestamp in input data."))
-      clusterstart <- min_tm
-      
-    } else{
-      # parse string input as POSIXct
-      clusterstart <- parse_mvapps_datetime(clusterstart)
-      # check start-point is within time-span covered by data
-      is_clusterbound_within_dt_period(clusterstart, min_tm, max_tm)
-    }
-    
-    # clusterend check
-    if(is.null(clusterend)) {
-      logger.warn(paste0("`clusterend` is set to NULL. Defaulting to end date as ",
-                         "the latest timestamp in input data."))
-      clusterend <- max_tm
-    } else {
-      # parse string input as POSIXct
-      clusterend <- parse_mvapps_datetime(clusterend)
-      # check end-point is within time-span covered by data
-      is_clusterbound_within_dt_period(clusterend, min_tm, max_tm)
-    }
+    # parse string input as POSIXct
+    clusterstart <- parse_mvapps_datetime(clusterstart)
+    # check start-point is within time-span covered by data
+    is_clusterbound_within_dt_period(clusterstart, min_tm, max_tm)
   }
+  
+  # clusterend check
+  if(is.null(clusterend)) {
+    logger.warn(paste0("`clusterend` is set to NULL. Defaulting to end date as ",
+                       "the latest timestamp in input data."))
+    clusterend <- max_tm
+  } else {
+    # parse string input as POSIXct
+    clusterend <- parse_mvapps_datetime(clusterend)
+    # check end-point is within time-span covered by data
+    is_clusterbound_within_dt_period(clusterend, min_tm, max_tm)
+  }
+  
   
   
   # check clusterstart vs clusterend

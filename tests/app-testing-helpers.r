@@ -36,7 +36,6 @@ set_interactive_app_testing <- function(){
 ## /////////////////////////////////////////////////////////////////////////////
 # helper to run SDK testing with different settings
 run_sdk <- function(data,
-                    wholedata = TRUE,
                     clusterstart = NULL,
                     clusterend = NULL,
                     clusterstep = 1L, 
@@ -61,7 +60,6 @@ run_sdk <- function(data,
 
   # set configuration to specified inputs
   new_app_config <- dflt_app_config
-  new_app_config$wholedata <- wholedata
   new_app_config$clusterstart <- clusterstart
   new_app_config$clusterend <- clusterend
   new_app_config$clusterstep <- clusterstep
