@@ -10,14 +10,14 @@
     {
       "id": "clusterstart",
       "name": "Clustering Start Timepoint",
-      "description": "Start date-time of period within input data to be considered for clustering. If `NULL` (default), the start date is set to the earliest timestamp in input data. Note: This input is only considered if 'Clustering on Entire Data' is not selected.",
+      "description": "Start date-time of period within input data to be considered for clustering. If `NULL` (default), the start timepoint is set to the earliest timestamp in input data. Note: This input is only considered if 'Clustering on Entire Data' is not selected.",
       "defaultValue": null,
       "type": "INSTANT"
     },
     {
       "id": "clusterend",
       "name": "Clustering End Timepoint",
-      "description": "Final date-time of period within input data to be considered for clustering. If `NULL` (default), the end date is set to the latest timestamp in input data. Note: This input is only considered if 'Clustering on Entire Data' is not selected.",
+      "description": "Final date-time of period within input data to be considered for clustering. If `NULL` (default), the end timepoint is set to the latest timestamp in input data. Note: This input is only considered if 'Clustering on Entire Data' is not selected.",
       "defaultValue": null,
       "type": "INSTANT"
     },

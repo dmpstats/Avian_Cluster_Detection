@@ -42,9 +42,9 @@ None
 
 **Clustering on Entire Data** (`wholedata`): Choose whether to perform clustering over the entire span of the input data. If selected, the Starting and End dates of clustering period specified below will be ignored.
 
-**Clustering Start Timepoint** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start date is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
+**Clustering Start Timepoint** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start timepoint is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
 
-**Clustering End Timepoint** (`clusterend`): Final date-time of period within input data to apply clustering. If `NULL` (default), the end date is set to the latest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected.
+**Clustering End Timepoint** (`clusterend`): Final date-time of period within input data to apply clustering. If `NULL` (default), the end timepoint is set to the latest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected.
 
 **Clustering Window** (`clusterwindow`) : Duration, in number of days, of the rolling time-window within which clustering is conducted. For example, setting this value to 7 (default) means clustering is applied iteratively to a 7-day rolling window.
 

@@ -97,17 +97,10 @@ rFunction <- function(data,
   clustering_timespan <- round(difftime(clusterend, clusterstart, units = "days"), 2)
 
   if(clusterwindow > clustering_timespan){
-    #   logger.warn(paste0(
-    #     "`clusterwindow` is larger than period defined to apply clustering (i.e. ",
-    #     "`clusterwindow` > clusterend` - `clusterstart`). Beware clustering will ",
-    #     "be applied to a rolling time-window effectively smaller than the chosen ",
-    #     "`clusterwindow`."
-    #   ))
-
     logger.warn(paste0(
       "Specified `clusterwindow` of ", clusterwindow, " days exceeds the available ", 
       clustering_timespan, "-day timespan of data being clustered. Therefore, clustering will ",
-      "occur only once whithin a shorter time-window, without a rolling window."
+      "occur only once across the whole selected clustering period, without a rolling window."
     ))
   }
   
@@ -235,7 +228,7 @@ rFunction <- function(data,
     }
     
     
-    #'  ----------------------------------------------------------
+    #'  -------------------------------------------------------------
     ### 2.2. Perform Clustering                        -----------
     
     #' Now that we know there is enough data, generate the new clusters
