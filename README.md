@@ -39,9 +39,9 @@ None
 
 ### Settings
 
-**Clustering Start Timepoint** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start timepoint is set to the earliest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected. 
+**Clustering Start Timepoint** (`clusterstart`) : Start date-time of period within input data to apply clustering. If `NULL` (default), the start timepoint is set to the earliest timestamp in input data.
 
-**Clustering End Timepoint** (`clusterend`): Final date-time of period within input data to apply clustering. If `NULL` (default), the end timepoint is set to the latest timestamp in input data. Note: This input is only considered if **Clustering on Entire Data** is not selected.
+**Clustering End Timepoint** (`clusterend`): Final date-time of period within input data to apply clustering. If `NULL` (default), the end timepoint is set to the latest timestamp in input data.
 
 **Clustering Window** (`clusterwindow`) : Duration, in number of days, of the rolling time-window within which clustering is conducted. For example, setting this value to 7 (default) means clustering is applied iteratively to a 7-day rolling window.
 
@@ -72,6 +72,6 @@ In addition, if the input data has significantly large or small gaps between eve
 
 ### Null or error handling
 
-- **Clustering Start Timepoint**: If `NULL`, start date will be set to two weeks prior to the latest timestamp of the input data.
+- **Clustering Start Timepoint**: If `NULL`, start date will be set to earliest timestamp of the input data.
 
 - **Clustering End Timepoint**: If `NULL`, end date will be set to the latest timestamp of the input data.
