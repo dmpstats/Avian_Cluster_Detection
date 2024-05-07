@@ -130,6 +130,25 @@ rFunction <- function(data,
   }
   
   
+  #' Check if projection is UTM, modifying it to UTM (ESPG 32733) if not.
+  #' Requirement for correct application of the dendrogram's height cut-off
+  #' value (`d`) in the hierarchical clustering step below, which is assumed to
+  #' be in meters
+  transf_to_utm <- FALSE
+  if(sf::st_crs(data)$proj != "utm"){
+
+    logger.info(
+      paste0("Input data is not projected in a UTM system. Temporarily reprojecting ",
+             "locations to 'WGS 84 / UTM zone 33S' for clustering purposes."))
+
+    # store original projection for later back-transformation
+    orig_crs <- sf::st_crs(data)
+    # transform to 'WGS 84 / UTM zone 33S'
+    data <- data |> sf::st_transform(crs = 32733)
+    # Update flag
+    transf_to_utm <- TRUE
+  }
+  
   
   logger.info(paste0("Proceeding to clustering between ", clusterstart, " and ", clusterend))
   
@@ -230,7 +249,11 @@ rFunction <- function(data,
       Y = st_coordinates(.)[, 2]
     )
     
-    # Build distance matrix (no SF method available for the hclust step):
+    #' COMMENT BC: `as.dist(sf::st_distance(clusterpoints))` would produce the
+    #' same result, but it's much slower. Using `dist` does however require
+    #' coordinates to be in UTM, so it returns euclidean distances in meters to
+    #' allow the correct application of cut-off `d`, below. This UTM check is
+    #' done in the input validation section, above.
     mdist <- dist(cbind(clusterpoints$X, clusterpoints$Y))
     hc <- hclust(as.dist(mdist), method = "complete")
     
@@ -610,6 +633,16 @@ rFunction <- function(data,
       # drop local auxiliary columns
       dplyr::select(-c("ID", "X", "Y"))
   }
+  
+  
+  #' back-transforming coords to original projection, if they've
+  #' were temporarily re-projected to UTM for clustering purposes
+  if(transf_to_utm){
+    logger.info(
+      paste0("Reverting location coordinates to original projection of input data."))
+    data <- data |> sf::st_transform(orig_crs)
+  }
+
   
   logger.info("That's it - Finished Clustering!")
   

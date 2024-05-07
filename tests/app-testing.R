@@ -6,6 +6,7 @@ library(move2)
 library(httr2)
 library(purrr)
 library(readr)
+library(sf)
 
 # Helpers
 source("tests/app-testing-helpers.r")
@@ -33,9 +34,20 @@ testthat::test_file("tests/testthat/test_RFunction.R")
 
 out_dt_nam <- rFunction(
   data = test_dt$nam, 
-   
   clusterwindow = 10L, 
   clusterstep = 2L)
+
+
+
+#' --------------------------
+#' Example of input data with locations not in UTM
+
+out_dt_nam_latlon <- rFunction(
+  data = sf::st_transform(test_dt$nam, crs = 4326), 
+  clusterwindow = 10L, 
+  clusterstep = 2L)
+
+identical(out_dt_nam_latlon$xy.clust, out_dt_nam$xy.clust)
 
 
 
@@ -328,7 +340,6 @@ out_dt_d100 |>
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
-
 
 
 
