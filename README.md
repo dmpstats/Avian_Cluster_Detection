@@ -53,6 +53,7 @@ Below are the key steps of the clustering process:
 
 - Specifying values other than NULL for either the **Clustering Start** or **End Timepoints** will result in outputs containing partially clustered location events.
 
+- The Weiszfeld geometric median provides a more robust calculation of cluster centroids, which makes them less susceptible to the influence of outlier cluster locations. This stands in contrast to standard centroid calculation methods, such as `sf::st_centroid()`, which relies on the mean of cluster locations.
 
 
 ### MoveApps Worflow Dependencies
