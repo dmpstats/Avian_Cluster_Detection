@@ -47,7 +47,7 @@ Below are the key steps of the clustering process:
 
 - **Clustering Window** plays a pivotal role in this clustering process by determining the time period over which locations are eligible for grouping into clusters via the hierarchical clustering algorithm. Essentially, it sets the maximum allowed time gap between consecutive locations within a cluster.
 
-- If the specified **Clustering Window** exceeds the time span covered by the data being clustered, cluster detection occurs only once on a fixed time window, i.e. the iterative steps are skipped. In such circumstances, the parameter **Maximum Inactive Cluster Duration** becomes irrelevant, and the maximum time gap between consecutive cluster element locations is dictated by the time span of the clustering data.
+- If the specified **Clustering Window** exceeds the time span covered by the data being clustered, cluster detection occurs only once on a fixed time window, i.e. the iterative steps are skipped. In such instances, the parameter **Maximum Inactive Cluster Duration** becomes irrelevant, and the maximum time gap between consecutive cluster element locations is dictated by the time span of the clustering data.
 
 - The **Clustering Time-step** parameter presents a trade-off between the App runtime performance and the accuracy of cluster matching (step 7, above). While considering the temporal resolution of the input data, opting for smaller time-step values is typically advantageous, granted that computational time constraints permit their use.
 
