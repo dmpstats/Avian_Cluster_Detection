@@ -20,7 +20,7 @@ Below are the key steps of the clustering process:
 
 3. Apply hierarchical clustering [`stats::hclust`](https://rdrr.io/r/stats/hclust.html) to the distance matrix of locations within the current time-window. Form clusters by employing the chosen cut-height (`d`) to the resulting dendrogram, i.e. grouping locations so that within-group distances are smaller than the specified cut-height value.
 
-4. Calculate the median location of each detected cluster (via [`Gmedian::Weiszfeld`](https://rdrr.io/cran/Gmedian/man/Gmedian.html)).
+4. Get the centroid of each detected cluster, calculated as the of median of cluster locations (via [`Gmedian::Weiszfeld`](https://rdrr.io/cran/Gmedian/man/Gmedian.html)).
 
 5. Advance the current time-window by the specified time-step (`clusterstep`).
 
@@ -36,7 +36,7 @@ Below are the key steps of the clustering process:
      
      - "One-to-Multiple" matches are treated as previously existent clusters that are expanding sparsely. Locations on multiple current clusters are assigned to the previous cluster.
      
-8. Re-calculate the median location on updated clusters.
+8. Re-calculate the centroids of updated clusters.
 
 9. Tag stable clusters exceeding the chosen inactive expiration period (`clusterexpiration`) so that they are not considered in step 7 of next iteration.
 
@@ -95,7 +95,7 @@ None
 
 ### Most common errors
 
-The app will halt processing and return an error under the following conditions:
+The app will halt processing an throw an error under the following conditions:
 
 - Selecting **Use Behavioural Attribute** when column `behav` is not present in the input dataset. Column `behav` is created in the App 'Behavioural Classification for Vultures', which must be deployed earlier in the workflow.
 

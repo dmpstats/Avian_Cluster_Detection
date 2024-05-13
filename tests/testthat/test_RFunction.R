@@ -231,9 +231,5 @@ test_that("Expected clustering outcome has not changed", {
     style = "json2"
   )
 
-  
-  
 
 })
-
-

@@ -38,6 +38,23 @@ out_dt_nam <- rFunction(
   clusterstep = 2L)
 
 
+out_dt_nam <- rFunction(
+  data = test_dt$nam, 
+  clusterstart = "2024-03-05 18:00:09",
+  clusterend = "2024-03-12 18:00:09",
+  clusterwindow = 10L, 
+  clusterstep = 2L)
+
+
+
+
+out_dt_nam <- rFunction(
+  data = test_dt$nam, 
+  clusterstart = min(test_dt$nam$timestamp),
+  clusterend = "2024-03-12 18:00:09",
+  clusterwindow = as.integer(ceiling(diff(range(test_dt$nam$timestamp), units = "days"))), 
+  clusterstep = 2L)
+
 
 #' --------------------------
 #' Example of input data with locations not in UTM
