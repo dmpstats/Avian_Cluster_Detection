@@ -1,64 +1,124 @@
 library('move2')
 library('lubridate')
 library('dplyr')
-library('magrittr')
-library('tidyr')
 library('Gmedian')
 library('sf')
-library('stringr')
 library('units')
-library('pbapply')
+library('magrittr')
 
-#' TODO
-#' - Add dependency on (or compute and bind locally) `nightpoint`column
 
-# Shortened 'not in':
-`%!in%` <- Negate(`%in%`)
-
-# Function to calculate geometric medians:
-calcGMedianSF <- function(data) {
-  
-  if (st_geometry_type(data[1,]) == "POINT") {
-    med <- data %>% 
-      st_coordinates()
-    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
-      rename(x = V1, y = V2) %>%
-      st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
-      st_geometry()
-  }
-  
-
-  if (st_geometry_type(data[1,]) == "MULTIPOINT") {
-    med <- data %>% 
-      st_coordinates() %>%
-      as.data.frame() %>%
-      group_by(L1) %>%
-      group_map(
-        ~ Gmedian::Weiszfeld(.)$median 
-      ) %>%
-      do.call(rbind, .) %>%
-      as.data.frame() %>%
-      st_as_sf(coords = colnames(.), crs = st_crs(data)) %>%
-      st_geometry()
-  }
-  
-  return(med)
-  
-}
 
 rFunction <- function(data,
                       clusterstart = NULL,
                       clusterend = NULL,
-                      clusterstep = 1, 
-                      clusterwindow = 7, 
-                      clustexpiration = 14, 
+                      clusterstep = 1L, 
+                      clusterwindow = 7L, 
+                      clustexpiration = 14L, 
                       behavsystem = TRUE, 
-                      d = 500,
+                      d = 500L,
                       clustercode = "A") {
   
   
-  #' --------------------------------------------------------------
-  # 0. Setup & Input Checks -----------------------------------------
+  ## 1. Setup & Input Checks -----------------------------------------
+  
+  max_tm <- max(mt_time(data), na.rm = TRUE)
+  min_tm <- min(mt_time(data), na.rm = TRUE) 
+
+  # check on positive integer inputs 
+  is_positive_integer(clusterstep)
+  is_positive_integer(clusterwindow)
+  is_positive_integer(clustexpiration)
+  is_positive_integer(d)
+  
+  # clusterstart check
+  if(is.null(clusterstart)) {
+    # logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to start date ",
+    #                    "2 weeks before the latest timestamp in input data."))
+    # clusterstart <- max_tm - days(14)
+    
+    # if clusterstart is NULL, use the first timepoint as start of clustering period
+    logger.warn(paste0("`clusterstart` is set to NULL. Defaulting to clustering start timepoint ",
+                       "as the earliest timestamp in input data."))
+    clusterstart <- min_tm
+    
+  } else{
+    # parse string input as POSIXct
+    clusterstart <- parse_mvapps_datetime(clusterstart)
+    # check start-point is within time-span covered by data
+    is_clusterbound_within_dt_period(clusterstart, min_tm, max_tm)
+  }
+  
+  # clusterend check
+  if(is.null(clusterend)) {
+    logger.warn(paste0("`clusterend` is set to NULL. Defaulting to end date as ",
+                       "the latest timestamp in input data."))
+    clusterend <- max_tm
+  } else {
+    # parse string input as POSIXct
+    clusterend <- parse_mvapps_datetime(clusterend)
+    # check end-point is within time-span covered by data
+    is_clusterbound_within_dt_period(clusterend, min_tm, max_tm)
+  }
+  
+  
+  
+  # check clusterstart vs clusterend
+  if(clusterstart >= clusterend){
+    msg <- paste0(
+      "Clustering Start Date-time (`clusterstart`) '", clusterstart,"' is equal, or exceeds, the ",
+      "Clustering End Date-time (`clusterend`) '", clusterend, "'. Please ensure ",
+      "that Start Date-time < End Date-time.")
+
+    logger.fatal(msg)
+    stop(msg, call. = FALSE)
+  }
+
+  
+  # check clusterwindow Vs clustering timespan
+  clustering_timespan <- round(difftime(clusterend, clusterstart, units = "days"), 2)
+
+  if(clusterwindow > clustering_timespan){
+    logger.warn(paste0(
+      "Specified `clusterwindow` of ", clusterwindow, " days exceeds the available ", 
+      clustering_timespan, "-day timespan of data being clustered. Therefore, clustering will ",
+      "occur only once across the whole selected clustering period, without a rolling window."
+    ))
+  }
+  
+  
+  
+  
+  # check clusterwindow Vs clusterstep
+  if(clusterstep > clusterwindow){
+    msg <- paste0(
+      "Specified Clustering Time-step (`clusterstep`) is larger than ",
+      "Clustering Window (`clusterwindow`), which would lead to loss of data. ",
+      "Please make sure time-step <= time-window.")
+    
+    logger.fatal(msg)
+    stop(msg, call. = FALSE) 
+  }
+  
+  
+  # Check behaviour present, if needed
+  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
+    msg <- paste0(
+      "Classified behaviour column 'behav' is not contained in the input data. ",
+      "Unable to perform clustering. Please deploy the App 'Behaviour Classification",
+      "for Vultures' earlier in workflow, before the current App.")
+    
+    logger.fatal(msg)
+    stop(msg, call. = FALSE) 
+  }
+  
+  
+  # check if index column is present (from standardization app), generating it otherwise
+  if("index" %!in% names(data)){
+    logger.info("'index' column not present in data - adding 'index' based on 'track_id' and 'timestamp'.")
+    data <- mutate(data, index = paste0(mt_track_id(data), " ", mt_time(data)))
+  }
+  
+
 
   # Check clustercode
   if (not_null(clustercode)) {
@@ -69,50 +129,48 @@ rFunction <- function(data,
     clustercode <- ""
   }
   
-  # Check suitability of start/end inputs
-  if(!is.instant(as.Date(clusterstart)) | is.null(clusterstart)) {
-    logger.error(paste0("Start date of clustering ", clusterstart, " is not a valid date Defaulting to start date 2 weeks before final date."))
-    clusterstart <- max(mt_time(data), na.rm = TRUE) - days(14)
-  }
-  if(!is.instant(as.Date(clusterend)) | is.null(clusterend)) {
-    logger.error(paste0("End date of clustering ", clusterend, " is not a valid date Defaulting to end date as most recent timestamp."))
-    clusterend <- max(mt_time(data), na.rm = TRUE)
-  }
   
-  # Check behaviour present, if needed
-  if(behavsystem == TRUE & "behav" %!in% colnames(data)) {
-    logger.fatal("Classified behaviour column 'behav' is not contained by input data. Unable to perform clustering. Please use classification MoveApp prior to this stage in the workflow")
-    stop()
-  }
-  
-  # Check if sunset columns are present
-  if ("sunset_timestamp" %in% colnames(data)) {
-    suntimes <- TRUE
-  } else {
-    suntimes <- FALSE
+  #' Check if projection is UTM, modifying it to UTM (ESPG 32733) if not.
+  #' Requirement for correct application of the dendrogram's height cut-off
+  #' value (`d`) in the hierarchical clustering step below, which is assumed to
+  #' be in meters
+  transf_to_utm <- FALSE
+  if(sf::st_crs(data)$proj != "utm"){
+
+    logger.info(
+      paste0("Input data is not projected in a UTM system. Temporarily reprojecting ",
+             "locations to 'WGS 84 / UTM zone 33S' for clustering purposes."))
+
+    # store original projection for later back-transformation
+    orig_crs <- sf::st_crs(data)
+    # transform to 'WGS 84 / UTM zone 33S'
+    data <- data |> sf::st_transform(crs = 32733)
+    # Update flag
+    transf_to_utm <- TRUE
   }
   
-  logger.info(paste0("Clustering between ", clusterstart, " and ", clusterend))
   
-  # Filter to relevant time window for overall clustering:
-  clusterstart %<>% as_date()
-  clusterend %<>% as_date()
-  eventdata <- data %>%
-    filter(between(mt_time(data), clusterstart - days(clusterwindow), clusterend + days(1)))
+  logger.info(paste0("Proceeding to clustering between ", clusterstart, " and ", clusterend))
+  
+  # Subset main data to period chosen for clustering
+  eventdata <- data %>% filter(between(mt_time(data), clusterstart, clusterend))
   
   
   #' ------------------------------------------------------------------
-  # Clustering Loop
-  #'  Operate on a rolling-window basis starting from clusterstart
+  ##  2. Clustering Loop -----
+  #' -----------------------------------------------------------------
+  #'  Operate on a iterative rolling-window basis starting from clusterstart
   #'  We increment by clusterstep (in days) and re-cluster until we reach the clusterend
   #'  
-  #'  'clusterdate' parameter will define the final day of data we are currently clustering up to
+  #' 'clusterdate' denotes the last timestamp in the data subset captured by the
+  #' rolling time-window at each step that is being submitted to clustering
 
+  # Set up the initial case, in which we have no roll-over of cluster data, that
+  # is the timestamp from start date-time that will yield the time-interval
+  # satisfying the length of the clustering time-window
+  clusterdate <- clusterstart + days(clusterwindow)
   
-  # Set up the initial case, in which we have no roll-over of cluster data:
-  clusterdate <- floor_date(clusterstart, unit = "days")
   clusterDataDwnld <- NULL
-  tempclustertable <- NULL
   laststep <- FALSE
   rollingstarttime <- Sys.time()
   
@@ -120,26 +178,18 @@ rFunction <- function(data,
   # Begin loop:
   while (laststep == FALSE) {
     
-    
     # If we're on the final step, set the clusterdate equal to final day:
-    if (clusterdate >= floor_date(clusterend, unit = "days")) {
+    if (clusterdate >= clusterend) {
       logger.trace(paste0("Current clusterdate ", as.Date(clusterdate), " is beyond final date. Assigning final date, ", as.Date(clusterend)))
-      clusterdate <- floor_date(clusterend, unit = "days")
+      clusterdate <- clusterend
       laststep <- TRUE
     }
     
-    
     #' -----------------------------------------------------------------------
-    #' 1. Data Setup and Import ----------------------------------------------
+    ### 2.1. Data Setup and Import                        ---------------------
+  
     #'  Here, filter to the relevant window and import
     #'  data from the previous rolling-window (if available)
-    
-    # Import cluster data from previous run
-    # This will contain only the key information for the clustering rolling-window 
-    # i.e. location data and timestamp
-    if (!is.null(tempclustertable)) {
-      clusterDataDwnld <- tempclustertable
-    }
     
     # Filter the location data down to our clustering window
     clusteringData <- filter(eventdata,
@@ -156,28 +206,33 @@ rFunction <- function(data,
       skipToNext <- TRUE}
     
     # And if using the behavioural classification system, check there is enough non-travelling behaviour:
-    #browser()
     if (behavsystem == TRUE) {
       if (sum(clusteringData$behav != "STravelling", na.rm = TRUE) < 2) { 
         logger.trace(paste0(as.Date(clusterdate), ":      Clustering complete - not enough stationary behaviour within clustering period"))
         skipToNext <- TRUE}}
     
-    # If either of these conditions are met, skip ahead to the next possible clusterdate:
+    # If either of these conditions are met skip ahead to the next iteration
     if (skipToNext == TRUE) {
-      # Find minimum following date on which we have data
-      clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
-        mt_time() %>%
-        min() + days(clusterwindow)
-      logger.trace(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))
-      next}
+      # if not the last step, set next possible clusterdate 
+      if(laststep == FALSE){
+        # Find minimum following date on which we have data, using it to reset the
+        # clusterdate so that it comprises the length of the clustering time-window
+        clusterdate <- filter(eventdata, mt_time(eventdata) > clusterdate) %>%
+          mt_time() %>%
+          min() + days(clusterwindow)
+        
+        logger.trace(paste0("     Skipping to next date with data to cluster: ", as.Date(clusterdate)))  
+      }
+      
+      next
+    }
     
     
+    #'  -------------------------------------------------------------
+    ### 2.2. Perform Clustering                        -----------
     
-    #' ----------------------------------------------------------------------
-    # 2. Perform Clustering ----------------------------------------------
     #' Now that we know there is enough data, generate the new clusters
 
-    
     # If using behavioural classification, filter to stationary behaviours:
     if (behavsystem == TRUE) {
       clusterpoints <- filter(clusteringData, behav %!in% c("STravelling", "Unknown"))
@@ -194,7 +249,11 @@ rFunction <- function(data,
       Y = st_coordinates(.)[, 2]
     )
     
-    # Build distance matrix (no SF method available for the hclust step):
+    #' COMMENT BC: `as.dist(sf::st_distance(clusterpoints))` would produce the
+    #' same result, but it's much slower. Using `dist` does however require
+    #' coordinates to be in UTM, so it returns euclidean distances in meters to
+    #' allow the correct application of cut-off `d`, below. This UTM check is
+    #' done in the input validation section, above.
     mdist <- dist(cbind(clusterpoints$X, clusterpoints$Y))
     hc <- hclust(as.dist(mdist), method = "complete")
     
@@ -206,14 +265,22 @@ rFunction <- function(data,
     cid <- as.vector(which(table(clusterpoints$clust) < 3))
     genclustertable %<>% filter(clust %!in% cid)
     
+    if(nrow(genclustertable) == 0){
+      logger.trace(paste0(as.Date(clusterdate), ":     Dismissing all clusters detected in current window as none contains more than 3 points."))
+      next
+    } 
     
     #' -----------------------------------------------------------------
-    ## Append cluster data ---------------------------------------------
+    #### Append cluster data ---------------------------------------------
+    
     # Generate a median location for each centroid:
     
     clusts <- genclustertable %>%
       group_by(clust) %>%
       summarise(geometry = st_combine(geometry))
+    
+    #' BC QUESTION: Maybe next could streamlined via sf::st_centroid()? Any particular 
+    #' reason we want to stick to Weiszfeld's algorithm?
     for (j in 1:nrow(clusts)) {
       clustid <- clusts$clust[j]
       clusts$geometry[j] <- calcGMedianSF(clusts[j,])
@@ -232,7 +299,7 @@ rFunction <- function(data,
     
     
     #' ----------------------------------------------------
-    # 3. Identify Matching Clusters ----------------------
+    ### 2.3. Identify Matching Clusters ----------------------
   
     newclust <- clusts
     logger.trace(paste0(as.Date(clusterdate), 
@@ -252,9 +319,10 @@ rFunction <- function(data,
         filter(lastdatetime + days(clustexpiration) > clusterdate - days(clusterwindow)) %>%
         arrange(xy.clust) 
       
+
       # Generate distance matrix:
       # Rows are existing clusts, columns are new clusts
-      dists <- st_distance(existingclust, newclust) %>% units::drop_units()
+      dists <- st_distance(existingclust, newclust) |> units::set_units("m") |> units::drop_units() # ensuring dist is in meters given 175m cut-off applied below
       rownames(dists) <- existingclust$xy.clust
       colnames(dists) <- newclust$xy.clust
       
@@ -278,7 +346,10 @@ rFunction <- function(data,
     
     
     #' -----------------------------------------------
-    ## Merging Clusters: Case 1 ----------------------
+    ###  2.4 Merging Clusters     ----------
+    #' ----------------------------------------------
+    
+    #### Case 1: multiple-to-one ----------------------
     #'
     #' Multiple old clusters -> 1 new cluster
     #' In this case, we want to re-allocate the constituent locations
@@ -286,6 +357,8 @@ rFunction <- function(data,
     
     # Check to see if this is true:
     if (length(unique(matchingclustermap$updID)) != nrow(matchingclustermap)) {
+      
+      # browser()
       
       # Retrieve their IDs
       ids <- which(table(matchingclustermap$updID) > 1)
@@ -312,14 +385,28 @@ rFunction <- function(data,
         # Match to nearest:
         allocpoints$xy.clust <- tempdat$updID[match(pdists$allocclust, tempdat$existID)]
         
-        # Remove from clustermap:
-        matchingclustermap %<>% filter(updID != names(ids)[u]) %>%
+        
+        #' BC QUESTION: objects `allocpoints` and `pdists`, appear to have no
+        #' bearing in the updating process. Some code missing here? 
+        #' 
+        #' In fact, as its stands, this is a bug, as the main data is not updated
+        #' with the merging clusters detected in this step (step 4. below ignores
+        #' the newly generated cluster names)
+        
+        # BC: FIX? update tracking data
+        updclust_event_idx <- which(xydata$xy.clust %in% names(ids)[u])
+        xydata$xy.clust[updclust_event_idx] <- allocpoints$xy.clust
+        
+        
+        # Update clustermap:
+        matchingclustermap <- matchingclustermap %>% 
+          filter(updID != names(ids)[u]) %>%
           bind_rows(tempdat)
         }
       }
     
-    #' -----------------------------------------------
-    ## Merging Clusters: Case 2 ----------------------
+    
+    #### Case 2: one-to-multiple ----------------------
     #'
     #' 1 old cluster -> multiple new clusters
     #' In this case, we just want to keep the old cluster
@@ -327,6 +414,8 @@ rFunction <- function(data,
     
     # Check to see if this is true:
     if (length(unique(matchingclustermap$existID)) != nrow(matchingclustermap)) {
+      
+      #browser()
       
       # Retrieve their IDs
       ids <- which(table(matchingclustermap$existID) > 1)
@@ -351,10 +440,12 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(matchingclustermap), "  matched to existing clusters"))
     
     
-    #' -----------------------------------------------
-    ## Merging Clusters: Case 3 ----------------------
+    
+    ####  Case 3: pre-existing clusters ----------------------
     #'
-    #' Pre-existing clusters with no  merges
+    #' Pre-existing clusters with no merges - i.e. those whose centroids are
+    #' >175m away from centroids of clusters detected in current window, meaning
+    #' no locations attributable to these clusters in this window
 
     # Retrieve the existing IDs not being merged:
     existIDs <- existingclust$xy.clust[existingclust$xy.clust %!in% matchingclustermap$existID]
@@ -371,8 +462,8 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":       ", nrow(existclustermap), "  clusters not matched"))
     
     
-    #' -----------------------------------------------
-    ## Merging Clusters: Case 4 ----------------------
+    
+    #### Case 4: new clusters ----------------------
     #'
     #' New clusters with no previous match (didn't previously exist)
     
@@ -395,7 +486,7 @@ rFunction <- function(data,
     
     
     #' ----------------------------------------------
-    # 4. Perform Matching ----------------------------
+    ### 2.4. Perform Matching ----------------------------
     
     # Combine the three merge tables (and an option for NA clusters):
     updatedclustermap <- rbind(
@@ -444,7 +535,8 @@ rFunction <- function(data,
 
     
     #' ----------------------------------------------------
-    # 5. Create TEMPORARY clustertable ----------------------
+    ### 2.5. Create TEMPORARY clustertable       ----------
+    #'
     # This will contain only the essential information for
     # cluster-updating: location, time, clustID
     
@@ -454,9 +546,10 @@ rFunction <- function(data,
     if (nrow(filter(data, xy.clust %in% updatedClusters$xy.clust)) != 0) {
       
       # Bind necessary data on updated clusters:
-      tempclusts <- filter(data, xy.clust %in% updatedClusters$xy.clust) %>% mutate(
-        datetime = mt_time(.)
-      ) 
+      tempclusts <- data %>%
+        filter(xy.clust %in% updatedClusters$xy.clust) %>% 
+        mutate(datetime = mt_time(.))
+      
       tempclusts %<>%
         group_by(xy.clust) %>%
         summarise(
@@ -477,7 +570,7 @@ rFunction <- function(data,
     
     
     #' -----------------------------------------------------------------------
-    # 6. Return other clusters to the dataset ----------------------------------
+    ### 2.6. Return other clusters to the dataset             ---------------
     logger.trace(paste0(as.Date(clusterdate), ":     Merging back into clusterDataDwnld"))
     
     if (!is.null(clusterDataDwnld)) {
@@ -501,8 +594,8 @@ rFunction <- function(data,
     
 
     
-    #' ----------------------------------------------------
-    # 7. Generate output & move on rolling window -----------
+    #' ------------------------------------------------------------------
+    ### 2.7. Generate output & move on rolling window        -----------
     
     # Log progress:
     logger.trace(paste0(as.Date(clusterdate), ":     COMPLETE. Total of ", nrow(clusterDataDwnld), " cumulative clusters generated"))
@@ -514,12 +607,172 @@ rFunction <- function(data,
     # End of clustering loop
   }
   
+  ## 3. Output processing ------------------
   
-  # data %<>% mutate(xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA))
+  if("xy.clust" %!in% names(data)){
+    logger.warn(paste0(
+      "No clusters detected. Generating empty column 'xy.clust', ",
+      "which is a dependency of downstream cluster-related Apps"))
+    
+    data$xy.clust <- NA
+    
+  }else{
+    
+    # identify 1-location clusters
+    rem <- dplyr::count(data, xy.clust) |> 
+      filter(n == 1) |> 
+      pull(xy.clust)
+    
+    data <- data |> 
+      mutate(
+        # drop cluster id for 1 location clusters
+        xy.clust = ifelse(xy.clust %in% rem, NA, xy.clust),
+        # concatenate user-specified code as the prefix of cluster_id
+        xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)
+        )  |> 
+      # drop local auxiliary columns
+      dplyr::select(-c("ID", "X", "Y"))
+  }
   
-  # Pass cluster-appended movement data onto next MoveApp:
+  
+  #' back-transforming coords to original projection, if they've
+  #' were temporarily re-projected to UTM for clustering purposes
+  if(transf_to_utm){
+    logger.info(
+      paste0("Reverting location coordinates to original projection of input data."))
+    data <- data |> sf::st_transform(orig_crs)
+  }
+
+  
+  logger.info("That's it - Finished Clustering!")
+  
   return(data)
+}
+
+
+
+# Helper Functions ====================================================================
+
+#' //////////////////////////////////////////////////////////////////////////////
+# wee helpers
+not_null <- Negate(is.null)
+`%!in%` <- Negate(`%in%`)
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' input validator for positive integer
+is_positive_integer <- function(x){
+  if(is.null(x)){
+    stop(paste0("App input `", deparse(substitute(x)), "` specified as NULL. `", 
+                deparse(substitute(x)), "` must be a positive integer."), 
+         call. = FALSE)
+    
+  } else if(x < 1){
+    stop(paste0("App input `", deparse(substitute(x)), "` must be a positive integer."), call. = FALSE)
+    
+  } else if(!is.integer(x)){
+    stop(paste0("App input `", deparse(substitute(x)), "` must be a positive integer."), call. = FALSE)
+    
+  }
+}
+
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' input validator for clustering start/end timestamp being within time period covered by data
+#' 
+#' @param cluster_bound POSIXct, an end/start timestamp within which clustering is to be performed
+#' @param min_time POSIXct, the minimum/earliest timestamp of the data under clustering
+#' @param max_time POSIXct, the maximum/latest timestamp of the data under clustering
+#' 
+is_clusterbound_within_dt_period <- function(cluster_bound, min_time, max_time){
+  
+  if(length(cluster_bound) != 1) stop("cluster_bound must be of length 1", call. = FALSE)
+  if(!is.POSIXct(cluster_bound)) stop("cluster_bound must be a POSIXct object", call. = FALSE)
+  if(!is.POSIXct(min_time)) stop("min_time must be a POSIXct object", call. = FALSE)
+  if(!is.POSIXct(max_time)) stop("max_time must be a POSIXct object", call. = FALSE)
+  
+  if(!dplyr::between(cluster_bound, min_time, max_time)){
+    msg <- paste0(
+      "App input `", deparse(substitute(cluster_bound)) ,"` is outside the range of timepoints ",
+      "covered by the input data. Please provide timepoint whithin the range ['", 
+      min_time, "', '", max_time, "'].")
+    
+    logger.fatal(msg)
+    stop(msg, call. = FALSE)
+  }  
   
 }
 
+
+
+#' //////////////////////////////////////////////////////////////////////////////
+#' Converter of date-time string to a POSIXct object based on expected format
+#' under MoveApps. Input validation also included
+parse_mvapps_datetime <- function(x){
+  
+  msg <- paste0(
+    "App input `", deparse(substitute(x)), "` must be a date-time string in ISO 8601 ",
+    "format with timezone UTC, e.g. '2017-12-30 23:59:59'. Please provide a valid string."
+  )
+  
+  if(is.POSIXct(x)){
+    dt_tm <- lubridate::with_tz(x, tzone = "UTC")
+    return(dt_tm)
+  }
+  
+  
+  if(!is.character(x)){
+    logger.fatal(msg)
+    stop(msg, call. = FALSE)
+  }
+  
+  # parse string as POSIXct, respecting ISO 8601 format, as 
+  # specified in https://docs.moveapps.org/#/appspec/current/settings/timestamp
+  dt_tm <- tryCatch(
+    as.POSIXct(
+      x, 
+      tz = "UTC", 
+      tryFormats = c("%Y-%m-%dT%H:%M:%OSZ", 
+                     "%Y-%m-%d %H:%M:%OS")),
+    error = \(cond){
+      logger.fatal(msg)
+      stop(msg, call. = FALSE)  
+    }
+  )
+  
+  return(dt_tm)
+}
+
+
+
+#' //////////////////////////////////////////////////////////////////////////////
+# Geometric medians
+calcGMedianSF <- function(data) {
+  
+  if (st_geometry_type(data[1,]) == "POINT") {
+    med <- data %>% 
+      st_coordinates()
+    med <- Gmedian::Weiszfeld(st_coordinates(data))$median %>% as.data.frame() %>%
+      rename(x = V1, y = V2) %>%
+      st_as_sf(coords = c("x", "y"), crs = st_crs(data)) %>%
+      st_geometry()
+  }
+  
+  
+  if (st_geometry_type(data[1,]) == "MULTIPOINT") {
+    med <- data %>% 
+      st_coordinates() %>%
+      as.data.frame() %>%
+      group_by(L1) %>%
+      group_map(
+        ~ Gmedian::Weiszfeld(.)$median 
+      ) %>%
+      do.call(rbind, .) %>%
+      as.data.frame() %>%
+      st_as_sf(coords = colnames(.), crs = st_crs(data)) %>%
+      st_geometry()
+  }
+  
+  return(med)
+  
+}
 
