@@ -28,7 +28,6 @@ test_that("input validation is doing it's job", {
   # invalid date-time format on `clusterstart` and `clusterend`
   expect_error(
     rFunction(input3, 
-              wholedata = FALSE, 
               clusterstart = "INVALID_DATETIME", 
               clusterend = "2014-01-01 00:00:00"),
     "App input `clusterstart` must be a date-time string in ISO 8601 format"
@@ -36,7 +35,6 @@ test_that("input validation is doing it's job", {
   
   expect_error(
     rFunction(input3, 
-              wholedata = FALSE, 
               clusterstart = 1331, 
               clusterend = "2014-01-01 00:00:00"),
     "App input `clusterstart` must be a date-time string in ISO 8601 format"
@@ -44,7 +42,6 @@ test_that("input validation is doing it's job", {
   
   expect_error(
     rFunction(input3, 
-              wholedata = FALSE, 
               clusterstart = "2006-12-22 22:07:04", 
               clusterend = "INVALID_DATETIME"),
     "App input `clusterend` must be a date-time string in ISO 8601 format"
@@ -52,7 +49,6 @@ test_that("input validation is doing it's job", {
   
   expect_error(
     rFunction(input3, 
-              wholedata = FALSE, 
               clusterstart = "2006-12-22 22:07:04", 
               clusterend = 44363),
     "App input `clusterend` must be a date-time string in ISO 8601 format"
@@ -61,7 +57,6 @@ test_that("input validation is doing it's job", {
   # `clusterstart` and `clusterend` outside data range
   expect_error(
     rFunction(input3, 
-              wholedata = FALSE, 
               clusterstart = "2016-12-22 22:07:04", 
               clusterend = "2006-12-22 22:07:04"),
     "App input `clusterstart` is outside the range of timepoints covered by the input data."
@@ -69,24 +64,15 @@ test_that("input validation is doing it's job", {
   
   expect_error(
     rFunction(input3, 
-              wholedata = FALSE, 
               clusterstart = "2006-12-22 22:07:04", 
               clusterend = "2016-12-22 22:07:04"),
     "App input `clusterend` is outside the range of timepoints covered by the input data."
   )
   
-  # `clusterstart` and `clusterend` ignored when `wholedata` is TRUE
-  expect_no_error(
-    rFunction(test_sets$wcs |> dplyr::slice(1:10), 
-              wholedata = TRUE, 
-              clusterstart = "INVALID_DATETIME", 
-              clusterend = "9999-12-31 22:07:04")
-  )
   
   # `clusterstart` exceeds `clusterend`
   expect_error(
     rFunction(test_sets$wcs, 
-              wholedata = FALSE, 
               clusterstart = max(test_sets$wcs$timestamp) - days(1), 
               clusterend = max(test_sets$wcs$timestamp) - days(2)), 
     "Clustering Start Date-time \\(`clusterstart`\\) '2024-03-13 22:00:00' is equal, or exceeds, the Clustering End Date-time "
@@ -118,7 +104,7 @@ test_that("input validation is doing it's job", {
 
 
 test_that("output is a valid move2 object", {
-  actual <- rFunction(data = test_sets$wcs |> dplyr::slice(1:100), wholedata = TRUE)
+  actual <- rFunction(data = test_sets$wcs |> dplyr::slice(1:100))
   # passses {move2} check
   expect_true(move2::mt_is_move2(actual))
   # check if 1st class is "move2"
@@ -128,7 +114,7 @@ test_that("output is a valid move2 object", {
 
 
 test_that("output always have column 'xy.clust', even when no clusters found", {
-  actual <- rFunction(data = test_sets$wcs |> dplyr::slice(1:2), wholedata = TRUE)
+  actual <- rFunction(data = test_sets$wcs |> dplyr::slice(1:2))
   expect_true("xy.clust" %in% names(actual))
 })
 
@@ -142,7 +128,6 @@ test_that("clustering on subset of data produces partially clustered output", {
   
   output <- rFunction(
     data = test_sets$nam, 
-    wholedata = FALSE, 
     clusterstart = tmstmp_start,
     clusterend = tmstmp_end,
     clusterwindow = 4L, 
@@ -150,7 +135,7 @@ test_that("clustering on subset of data produces partially clustered output", {
   
   # no clusters on data earlier than clusterstart
   expect_true(
-    actual |> 
+    output |> 
       filter(timestamp <  tmstmp_start) |> 
       pull(xy.clust) |> 
       is.na() |> 
@@ -159,7 +144,7 @@ test_that("clustering on subset of data produces partially clustered output", {
   
   # no clusters on data earlier than clusterend
   expect_true(
-    actual |> 
+    output |> 
       filter(timestamp >  tmstmp_end) |> 
       pull(xy.clust) |> 
       is.na() |> 
@@ -168,7 +153,7 @@ test_that("clustering on subset of data produces partially clustered output", {
   
   #  clusters on subset of data between clusterstart & clusterend
   expect_false(
-    actual |> 
+    output |> 
       filter(between(timestamp, tmstmp_start, tmstmp_end)) |> 
       pull(xy.clust) |> 
       is.na() |> 
@@ -189,7 +174,6 @@ test_that("Expected clustering outcome has not changed", {
   expect_snapshot_value(
      rFunction(
       test_sets$ken_tnz |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(2)),
-      wholedata = TRUE
     ) |>
       pull(xy.clust) |>
       table(),
@@ -200,7 +184,6 @@ test_that("Expected clustering outcome has not changed", {
   expect_snapshot_value(
     rFunction(
       test_sets$nam |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(10)),
-      wholedata = TRUE,
       clusterwindow = 7L
     ) |>
       pull(xy.clust) |>

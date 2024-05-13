@@ -47,7 +47,6 @@ out_dt_nam <- rFunction(
 
 
 
-
 out_dt_nam <- rFunction(
   data = test_dt$nam, 
   clusterstart = min(test_dt$nam$timestamp),
