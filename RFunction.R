@@ -13,9 +13,10 @@ rFunction <- function(data,
                       clusterend = NULL,
                       clusterstep = 1L, 
                       clusterwindow = 7L, 
+                      d = 500L,
+                      match_thresh = 175L,
                       clustexpiration = 14L, 
                       behavsystem = TRUE, 
-                      d = 500L,
                       clustercode = "A") {
   
   
@@ -28,6 +29,7 @@ rFunction <- function(data,
   is_positive_integer(clusterstep)
   is_positive_integer(clusterwindow)
   is_positive_integer(clustexpiration)
+  is_positive_integer(match_thresh)
   is_positive_integer(d)
   
   # clusterstart check
@@ -316,13 +318,15 @@ rFunction <- function(data,
 
       # Generate distance matrix:
       # Rows are existing clusts, columns are new clusts
-      dists <- st_distance(existingclust, newclust) |> units::set_units("m") |> units::drop_units() # ensuring dist is in meters given 175m cut-off applied below
+      dists <- st_distance(existingclust, newclust) |> units::set_units("m") |> units::drop_units() # ensuring dist in meters given `match_thresh` cut-off applied below
       rownames(dists) <- existingclust$xy.clust
       colnames(dists) <- newclust$xy.clust
       
-      # Identify close clusters (within 175m) and arrange in table:
-      closeClusterIndices  <- try(as_tibble(
-        which(dists < 175, arr.ind = T, useNames = T)))
+      # Identify clusters within proximity threshold and arrange in table:
+      closeClusterIndices  <- try(
+        as_tibble(which(dists < match_thresh, arr.ind = T, useNames = T))
+      )
+      
       closeClusterIndices$row <- rownames(dists)[closeClusterIndices$row]
       closeClusterIndices$col <-  colnames(dists)[closeClusterIndices$col]
       

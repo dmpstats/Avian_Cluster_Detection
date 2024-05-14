@@ -21,6 +21,9 @@ test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key
 set_interactive_app_testing()
 
 
+
+
+
 # ---------------------------------------- #
 # ----    Automated Unit testing        ----
 # ---------------------------------------- #
@@ -36,6 +39,9 @@ out_dt_nam <- rFunction(
   data = test_dt$nam, 
   clusterwindow = 10L, 
   clusterstep = 2L)
+
+
+
 
 
 out_dt_nam <- rFunction(
@@ -361,6 +367,29 @@ out_dt_d100 |>
 
 
 
+#' -------------------------------------------------------
+#' test marginal effect of matching proximity threshold
+#' 
+
+#' 175 meters (default)
+out_1 <- rFunction(
+  data = test_dt$nam,
+  match_thresh = 175L,
+  clustercode = "A")
+
+table(out_1$xy.clust)
+
+#' 100 meters (default)
+out_2 <- rFunction(
+  data = test_dt$nam,
+  match_thresh = 100L,
+  clustercode = "A")
+
+table(out_2$xy.clust)
+
+
+
+
 
 #' --------------------------------------------------
 #'  Varied datasets with assorted reasonable settings
@@ -470,6 +499,7 @@ run_sdk(
   clustexpiration = 14L, 
   behavsystem = TRUE, 
   d = 500L,
+  match_thresh = 100,
   clustercode = "A")
   
 output <- readRDS("data/output/output.rds"); output

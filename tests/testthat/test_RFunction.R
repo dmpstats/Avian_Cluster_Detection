@@ -214,5 +214,29 @@ test_that("Expected clustering outcome has not changed", {
     style = "json2"
   )
 
+  
+  # lower `d`
+  expect_snapshot_value(
+    rFunction(
+      test_sets$wcs, 
+      d = 250L
+    ) |> 
+      pull(xy.clust) |> 
+      table(),
+    style = "json2"
+  )
+  
+  
+  # lower `match_thresh`
+  expect_snapshot_value(
+    rFunction(
+      test_sets$ken_tnz |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(6)), 
+      match_thresh = 100L
+    ) |> 
+      pull(xy.clust) |> 
+      table(),
+    style = "json2"
+  )
 
+  
 })

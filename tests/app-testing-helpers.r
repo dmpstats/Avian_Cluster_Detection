@@ -43,6 +43,7 @@ run_sdk <- function(data,
                     clustexpiration = 14L, 
                     behavsystem = TRUE, 
                     d = 500L,
+                    match_thresh = 175,
                     clustercode = "A"
                     ){
 
@@ -67,6 +68,7 @@ run_sdk <- function(data,
   new_app_config$clustexpiration <- clustexpiration
   new_app_config$behavsystem <- behavsystem
   new_app_config$d <- d
+  new_app_config$match_thresh <- match_thresh
   new_app_config$clustercode <- clustercode
   
 
