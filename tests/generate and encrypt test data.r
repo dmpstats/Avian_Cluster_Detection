@@ -18,6 +18,7 @@ require(readr)
 require(lubridate)
 require(withr)
 require(httr2)
+require(keyring)
 
 
 options(dplyr.width = Inf)
@@ -86,6 +87,7 @@ sa_vfa <- study_level_wf(
   tm_start = tm_end - days(15),
   tm_end = tm_end
 )
+
 
 wcs <- study_level_wf(
   apps_paths = apps_paths,

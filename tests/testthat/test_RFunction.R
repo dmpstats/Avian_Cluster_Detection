@@ -113,9 +113,9 @@ test_that("output is a valid move2 object", {
 
 
 
-test_that("output always have column 'xy.clust', even when no clusters found", {
+test_that("output always have column 'clust_id', even when no clusters found", {
   actual <- rFunction(data = test_sets$wcs |> dplyr::slice(1:2))
-  expect_true("xy.clust" %in% names(actual))
+  expect_true("clust_id" %in% names(actual))
 })
 
 
@@ -137,7 +137,7 @@ test_that("clustering on subset of data produces partially clustered output", {
   expect_true(
     output |> 
       filter(timestamp <  tmstmp_start) |> 
-      pull(xy.clust) |> 
+      pull(clust_id) |> 
       is.na() |> 
       all()
     )
@@ -146,7 +146,7 @@ test_that("clustering on subset of data produces partially clustered output", {
   expect_true(
     output |> 
       filter(timestamp >  tmstmp_end) |> 
-      pull(xy.clust) |> 
+      pull(clust_id) |> 
       is.na() |> 
       all()
   )
@@ -155,7 +155,7 @@ test_that("clustering on subset of data produces partially clustered output", {
   expect_false(
     output |> 
       filter(between(timestamp, tmstmp_start, tmstmp_end)) |> 
-      pull(xy.clust) |> 
+      pull(clust_id) |> 
       is.na() |> 
       all()
   )
@@ -175,7 +175,7 @@ test_that("Expected clustering outcome has not changed", {
      rFunction(
       test_sets$ken_tnz |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(2)),
     ) |>
-      pull(xy.clust) |>
+      pull(clust_id) |>
       table(),
     style = "json2"
   )
@@ -186,7 +186,7 @@ test_that("Expected clustering outcome has not changed", {
       test_sets$nam |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(10)),
       clusterwindow = 7L
     ) |>
-      pull(xy.clust) |>
+      pull(clust_id) |>
       table(),
     style = "json2"
   )
@@ -197,7 +197,7 @@ test_that("Expected clustering outcome has not changed", {
     rFunction(
       test_sets$savahn |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(10))
     ) |>
-      pull(xy.clust) |>
+      pull(clust_id) |>
       table(),
     style = "json2"
   )
@@ -209,10 +209,34 @@ test_that("Expected clustering outcome has not changed", {
       test_sets$wcs,
       clusterstep = 3L
     ) |> 
-      pull(xy.clust) |> 
+      pull(clust_id) |> 
       table(),
     style = "json2"
   )
 
+  
+  # lower `d`
+  expect_snapshot_value(
+    rFunction(
+      test_sets$wcs, 
+      d = 250L
+    ) |> 
+      pull(clust_id) |> 
+      table(),
+    style = "json2"
+  )
+  
+  
+  # lower `match_thresh`
+  expect_snapshot_value(
+    rFunction(
+      test_sets$ken_tnz |> dplyr::filter(timestamp > max(timestamp) - lubridate::days(6)), 
+      match_thresh = 100L
+    ) |> 
+      pull(clust_id) |> 
+      table(),
+    style = "json2"
+  )
 
+  
 })
