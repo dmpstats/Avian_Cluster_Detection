@@ -514,6 +514,11 @@ rFunction <- function(data,
         group_by(clust_id) %>%
         summarise(geometry = st_union(geometry)) %>% # Join geometries together into multipoint
         st_centroid() # Find mean location of two centroids (we should change this later)
+      
+      #' COMEBCK BC: the `st_centroid` step doesn't seem to be relevant in the
+      #' current clustering approach. It should probably be removed to avoid
+      #' confusion with the centroid calculation via `calcGMedianSF()` performed 
+      #' below
     }
     
     # Add cluster data into main location data:
