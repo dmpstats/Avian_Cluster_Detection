@@ -10,7 +10,7 @@ This MoveApp utilizes a rolling time-window to spatially cluster location events
 
 ## Documentation
 
-The App employs a spatial agglomerative clustering process on location events, covering either the entire input dataset or a specified time-period within it. This process operates over a rolling time-window that 'closes' clusters after a period of inactivity. The time-window then advances by the chosen time-step, iteratively reapplying the clustering process until reaching the last timestamp entry of the data under clustering. Clustered location events are annotated with a cluster ID code, which is appended to the input data as a column named `xy.clust`. 
+The App employs a spatial agglomerative clustering process on location events, covering either the entire input dataset or a specified time-period within it. This process operates over a rolling time-window that 'closes' clusters after a period of inactivity. The time-window then advances by the chosen time-step, iteratively reapplying the clustering process until reaching the last timestamp entry of the data under clustering. Clustered location events are annotated with a cluster ID code, which is appended to the input data as a column named `clust_id`. 
 
 Below are the key steps of the clustering process:
 
@@ -67,7 +67,7 @@ A `move2::move2_loc` object.
 
 ### Output data
 
-A `move2::move2_loc` object, with appended column `xy.clust` (which cluster, if any, a location is associated with).
+A `move2::move2_loc` object, with appended column `clust_id` (which cluster, if any, a location is associated with).
 
 ### Artefacts
 

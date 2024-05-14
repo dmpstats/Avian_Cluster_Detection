@@ -284,14 +284,14 @@ rFunction <- function(data,
 
     # Create output table:
     clusts %<>% 
-      mutate(xy.clust = paste0("up", clust)) %>%
+      mutate(clust_id = paste0("up", clust)) %>%
       dplyr::select(-clust)
     
     # Output location data:
     xydata <- clusterpoints %>% ungroup() %>%
-      mutate(xy.clust = paste0("up", clust)) %>%
+      mutate(clust_id = paste0("up", clust)) %>%
       dplyr::select(-clust) %>%
-      mutate(xy.clust = if_else(xy.clust %in% unique(clusts$xy.clust), xy.clust, "upNA"))
+      mutate(clust_id = if_else(clust_id %in% unique(clusts$clust_id), clust_id, "upNA"))
     
     
     #' ----------------------------------------------------
@@ -313,14 +313,14 @@ rFunction <- function(data,
     } else {
       existingclust <- clusterDataDwnld %>%
         filter(lastdatetime + days(clustexpiration) > clusterdate - days(clusterwindow)) %>%
-        arrange(xy.clust) 
+        arrange(clust_id) 
       
 
       # Generate distance matrix:
       # Rows are existing clusts, columns are new clusts
       dists <- st_distance(existingclust, newclust) |> units::set_units("m") |> units::drop_units() # ensuring dist in meters given `match_thresh` cut-off applied below
-      rownames(dists) <- existingclust$xy.clust
-      colnames(dists) <- newclust$xy.clust
+      rownames(dists) <- existingclust$clust_id
+      colnames(dists) <- newclust$clust_id
       
       # Identify clusters within proximity threshold and arrange in table:
       closeClusterIndices  <- try(
@@ -364,8 +364,8 @@ rFunction <- function(data,
         
         # 1: Get merge, location, and old cluster data
         tempdat <- filter(matchingclustermap, updID == names(ids)[u])
-        allocpoints <- filter(xydata, xy.clust %in% tempdat$updID)
-        existingclustpoints <- filter(clusterDataDwnld, xy.clust %in% tempdat$existID)
+        allocpoints <- filter(xydata, clust_id %in% tempdat$updID)
+        existingclustpoints <- filter(clusterDataDwnld, clust_id %in% tempdat$existID)
         
         # Update cluster names:
         tempdat$updID <- paste0(tempdat$updID, ".", tempdat$existID)
@@ -377,15 +377,15 @@ rFunction <- function(data,
           mutate(
             # Get index of nearest cluster
             nearind = apply(., 1, which.min),
-            allocclust = existingclustpoints$xy.clust[nearind]
+            allocclust = existingclustpoints$clust_id[nearind]
           )
         
         # Match to nearest:
-        allocpoints$xy.clust <- tempdat$updID[match(pdists$allocclust, tempdat$existID)]
+        allocpoints$clust_id <- tempdat$updID[match(pdists$allocclust, tempdat$existID)]
         
         # update tracking data
-        updclust_event_idx <- which(xydata$xy.clust %in% names(ids)[u])
-        xydata$xy.clust[updclust_event_idx] <- allocpoints$xy.clust
+        updclust_event_idx <- which(xydata$clust_id %in% names(ids)[u])
+        xydata$clust_id[updclust_event_idx] <- allocpoints$clust_id
         
         
         # Update clustermap:
@@ -420,10 +420,10 @@ rFunction <- function(data,
         
         # 2: Deal with clustertable just by cutting the cluster out
         # They'll be re-introduced with the matching cluster-map
-        newclust <- filter(newclust, xy.clust %!in% tempdat$updID)
+        newclust <- filter(newclust, clust_id %!in% tempdat$updID)
         
         # 3: Deal with tracking data by assigning all to new cluster
-        xydata$xy.clust[xydata$xy.clust %in% tempdat$updID] <- newname
+        xydata$clust_id[xydata$clust_id %in% tempdat$updID] <- newname
       }
     }
     
@@ -438,7 +438,7 @@ rFunction <- function(data,
     #' no locations attributable to these clusters in this window
 
     # Retrieve the existing IDs not being merged:
-    existIDs <- existingclust$xy.clust[existingclust$xy.clust %!in% matchingclustermap$existID]
+    existIDs <- existingclust$clust_id[existingclust$clust_id %!in% matchingclustermap$existID]
     
     # Generate table matching them to nothing
     if (length(existIDs) != 0) {
@@ -458,12 +458,12 @@ rFunction <- function(data,
     #' New clusters with no previous match (didn't previously exist)
     
     # Retrieve the IDs of these clusters:
-    newIDs <- newclust$xy.clust[newclust$xy.clust %!in% matchingclustermap$updID]
+    newIDs <- newclust$clust_id[newclust$clust_id %!in% matchingclustermap$updID]
     
     # We find the lowest 'free' value at which we can start their cluster IDs:
     if (length(newIDs) != 0) {
       if (!is.null(existingclust)) {
-        startid <- max(clusterDataDwnld$xy.clust) + 1
+        startid <- max(clusterDataDwnld$clust_id) + 1
       } else {startid <- 1}
       
       # Generate table with these new IDs:
@@ -489,19 +489,19 @@ rFunction <- function(data,
     
     # First, match location data:    
     xytagdata <- xydata %>%
-      rename(updID = xy.clust) %>%
+      rename(updID = clust_id) %>%
       left_join(updatedclustermap) %>% # Match clusters
-      rename(xy.clust = existID) %>%
-      mutate(xy.clust = as.numeric(xy.clust)) %>%
+      rename(clust_id = existID) %>%
+      mutate(clust_id = as.numeric(clust_id)) %>%
       dplyr::select(-updID) %>% # Drop update column
       suppressMessages()
 
     # Secondly, cluster data:
     newclust <- newclust %>%
-      rename(updID = xy.clust) %>%
+      rename(updID = clust_id) %>%
       left_join(updatedclustermap) %>%
-      rename(xy.clust = existID) %>%
-      mutate(xy.clust = as.numeric(xy.clust)) %>%
+      rename(clust_id = existID) %>%
+      mutate(clust_id = as.numeric(clust_id)) %>%
       dplyr::select(-updID) %>%
       suppressMessages()
 
@@ -509,9 +509,9 @@ rFunction <- function(data,
     if (is.null(existingclust) | is.null(newclust)) {
       updatedClusters <- newclust # nothing to add in this case
     } else {
-      updatedClusters <- rbind(existingclust[, c("xy.clust", "geometry")], 
+      updatedClusters <- rbind(existingclust[, c("clust_id", "geometry")], 
                                newclust) %>%
-        group_by(xy.clust) %>%
+        group_by(clust_id) %>%
         summarise(geometry = st_union(geometry)) %>% # Join geometries together into multipoint
         st_centroid() # Find mean location of two centroids (we should change this later)
     }
@@ -533,15 +533,15 @@ rFunction <- function(data,
     logger.trace(paste0(as.Date(clusterdate), ":     Generating temporary clustertable"))
     
     # Perform this step only if there are updates to perform on the tag data:
-    if (nrow(filter(data, xy.clust %in% updatedClusters$xy.clust)) != 0) {
+    if (nrow(filter(data, clust_id %in% updatedClusters$clust_id)) != 0) {
       
       # Bind necessary data on updated clusters:
       tempclusts <- data %>%
-        filter(xy.clust %in% updatedClusters$xy.clust) %>% 
+        filter(clust_id %in% updatedClusters$clust_id) %>% 
         mutate(datetime = mt_time(.))
       
       tempclusts %<>%
-        group_by(xy.clust) %>%
+        group_by(clust_id) %>%
         summarise(
           firstdatetime = min(datetime),
           lastdatetime = max(datetime),
@@ -567,7 +567,7 @@ rFunction <- function(data,
       
       clusterDataDwnld <- bind_rows(clustertable_update,
                                     filter(clusterDataDwnld, 
-                                           xy.clust %!in% clustertable_update$xy.clust)) %>%
+                                           clust_id %!in% clustertable_update$clust_id)) %>%
         arrange(desc(firstdatetime))
     } else {
       
@@ -599,26 +599,26 @@ rFunction <- function(data,
   
   ## 3. Output processing ------------------
   
-  if("xy.clust" %!in% names(data)){
+  if("clust_id" %!in% names(data)){
     logger.warn(paste0(
-      "No clusters detected. Generating empty column 'xy.clust', ",
+      "No clusters detected. Generating empty column 'clust_id', ",
       "which is a dependency of downstream cluster-related Apps"))
     
-    data$xy.clust <- NA
+    data$clust_id <- NA
     
   }else{
     
     # identify 1-location clusters
-    rem <- dplyr::count(data, xy.clust) |> 
+    rem <- dplyr::count(data, clust_id) |> 
       filter(n == 1) |> 
-      pull(xy.clust)
+      pull(clust_id)
     
     data <- data |> 
       mutate(
         # drop cluster id for 1 location clusters
-        xy.clust = ifelse(xy.clust %in% rem, NA, xy.clust),
+        clust_id = ifelse(clust_id %in% rem, NA, clust_id),
         # concatenate user-specified code as the prefix of cluster_id
-        xy.clust = ifelse(!is.na(xy.clust), paste0(clustercode, xy.clust), NA)
+        clust_id = ifelse(!is.na(clust_id), paste0(clustercode, clust_id), NA)
         )  |> 
       # drop local auxiliary columns
       dplyr::select(-c("ID", "X", "Y"))

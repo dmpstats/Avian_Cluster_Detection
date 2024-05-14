@@ -35,14 +35,6 @@ testthat::test_file("tests/testthat/test_RFunction.R")
 # ----   Interactive RFunction testing  ----
 # ---------------------------------------- #
 
-out_dt_nam <- rFunction(
-  data = test_dt$nam, 
-  clusterwindow = 10L, 
-  clusterstep = 2L)
-
-
-
-
 
 out_dt_nam <- rFunction(
   data = test_dt$nam, 
@@ -64,12 +56,17 @@ out_dt_nam <- rFunction(
 #' --------------------------
 #' Example of input data with locations not in UTM
 
+out_dt_nam <- rFunction(
+  data = test_dt$nam, 
+  clusterwindow = 10L, 
+  clusterstep = 2L)
+
 out_dt_nam_latlon <- rFunction(
   data = sf::st_transform(test_dt$nam, crs = 4326), 
   clusterwindow = 10L, 
   clusterstep = 2L)
 
-identical(out_dt_nam_latlon$xy.clust, out_dt_nam$xy.clust)
+identical(out_dt_nam_latlon$clust_id, out_dt_nam$clust_id)
 
 
 
@@ -112,8 +109,8 @@ out_no_rolling <- rFunction(
 #' time lag between consecutive elements of some of the clusters is larger than
 #' the specified 8 days
 out_no_rolling |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
   filter(max_lag > 8) |> 
@@ -135,8 +132,8 @@ out_exp_lessthan_wdw <- rFunction(
 
 
 out_exp_lessthan_wdw |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -159,8 +156,8 @@ out_exp_morethan_wdw <- rFunction(
 
 
 out_exp_morethan_wdw |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -181,8 +178,8 @@ out_exp_morethan_wdw_lrgstep <- rFunction(
 
 
 out_exp_morethan_wdw_lrgstep |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -202,12 +199,12 @@ out_dt_wndw4 <- rFunction(
   clustercode = "A")
 
 # nr clusters
-length(unique(out_dt_wndw4$xy.clust))
+length(unique(out_dt_wndw4$clust_id))
 
 # max time lag between point elements of each cluster
 out_dt_wndw4 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -215,8 +212,8 @@ out_dt_wndw4 |>
   print(n = 20)
             
 out_dt_wndw4 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
@@ -230,11 +227,11 @@ out_dt_wndw12 <- rFunction(
   clusterwindow = 12L, 
   clustercode = "A")
 
-length(unique(out_dt_wndw12$xy.clust))
+length(unique(out_dt_wndw12$clust_id))
 
 out_dt_wndw12 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -242,8 +239,8 @@ out_dt_wndw12 |>
   print(n = 20)
 
 out_dt_wndw12 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
@@ -260,12 +257,12 @@ out_dt_stp1 <- rFunction(
   clusterstep = 1L, 
   clustercode = "A")
 
-length(unique(out_dt_stp1$xy.clust))
+length(unique(out_dt_stp1$clust_id))
 
 # 1-day time-step
 out_dt_stp1 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -273,8 +270,8 @@ out_dt_stp1 |>
   print(n = 20)
 
 out_dt_stp1 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
@@ -286,11 +283,11 @@ out_dt_stp5 <- rFunction(
   clusterstep = 5L, 
   clustercode = "A")
 
-length(unique(out_dt_stp5$xy.clust))
+length(unique(out_dt_stp5$clust_id))
 
 out_dt_stp5 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -298,8 +295,8 @@ out_dt_stp5 |>
   print(n = 20)
 
 out_dt_stp5 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
@@ -319,11 +316,11 @@ out_dt_d500 <- rFunction(
   clustercode = "A")
 
 
-length(unique(out_dt_d500$xy.clust))
+length(unique(out_dt_d500$clust_id))
 
 out_dt_d500 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -331,8 +328,8 @@ out_dt_d500 |>
   print(n = 20)
 
 out_dt_d500 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
@@ -345,11 +342,11 @@ out_dt_d100 <- rFunction(
   clustercode = "A")
 
 
-length(unique(out_dt_d100$xy.clust))
+length(unique(out_dt_d100$clust_id))
 
 out_dt_d100 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -357,8 +354,8 @@ out_dt_d100 |>
   print(n = 20)
 
 out_dt_d100 |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
@@ -377,7 +374,7 @@ out_1 <- rFunction(
   match_thresh = 175L,
   clustercode = "A")
 
-table(out_1$xy.clust)
+table(out_1$clust_id)
 
 #' 100 meters (default)
 out_2 <- rFunction(
@@ -385,7 +382,7 @@ out_2 <- rFunction(
   match_thresh = 100L,
   clustercode = "A")
 
-table(out_2$xy.clust)
+table(out_2$clust_id)
 
 
 
@@ -408,16 +405,16 @@ out_dt_nam <- rFunction(
 
 
 out_dt_nam |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
 
 
 out_dt_nam |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -438,16 +435,16 @@ out_dt_gaia <- rFunction(
   clustercode = "gaia")
 
 out_dt_gaia |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
 
 
 out_dt_gaia |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -466,16 +463,16 @@ out_dt_sa_vfa <- rFunction(
   clustercode = "sa_vfa")
 
 out_dt_sa_vfa |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_split(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_split(clust_id) |> 
   map(~max(st_distance(.x))) |> 
   purrr::list_c() |> 
   sort(decreasing = TRUE)
 
 
 out_dt_sa_vfa |> 
-  tidyr::drop_na(xy.clust) |> 
-  group_by(xy.clust) |> 
+  tidyr::drop_na(clust_id) |> 
+  group_by(clust_id) |> 
   arrange(timestamp) |>  
   mutate( time_lag = as.numeric(lead(timestamp) - timestamp, units = "days")) |>
   summarise(max_lag = max(time_lag, na.rm = TRUE)) |> 
@@ -503,7 +500,7 @@ run_sdk(
   clustercode = "A")
   
 output <- readRDS("data/output/output.rds"); output
-table(output$xy.clust)
+table(output$clust_id)
 
 
 
@@ -518,7 +515,7 @@ run_sdk(
   clustercode = "A")
 
 output <- readRDS("data/output/output.rds"); output
-table(output$xy.clust)
+table(output$clust_id)
 
 
 
