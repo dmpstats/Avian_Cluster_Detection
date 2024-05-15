@@ -89,7 +89,7 @@ None
 
 **Use Behavioural Attribute** (`behavsystem`): Choose whether to consider animal behaviour in the analysis (default: `TRUE`). If selected, clustering is restricted to stationary-type classified locations (e.g. feeding, resting or roosting). Otherwise, clustering includes all available data. Note: this option requires prior deployment of the 'Behavioural Classification for Vultures' App in the workflow.
 
-**Maximum Inactive Cluster Duration** (`clusterexpiration`): Number of days of inactivity after which a cluster is considered 'closed' (default: 14 days). That is, if no new location has been added to a given cluster for this duration, no further locations will be allocated to that cluster.
+**Maximum Inactive Cluster Duration** (`clustexpiration`): Number of days of inactivity after which a cluster is considered 'closed' (default: 14 days). That is, if no new location has been added to a given cluster for this duration, no further locations will be allocated to that cluster.
 
 **Cluster ID Prefix** (`clustercode`): Optional prefix to add to automatically generated cluster ID codes. For instance, setting it to 'A' (default) results in clusters labelled 'A.1', 'A.2', etc. Useful for post-processing, e.g. merging outputs from different datasets or studies.
 

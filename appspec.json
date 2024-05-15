@@ -43,7 +43,7 @@
       "type": "INTEGER"
     },
     {
-      "id": "clusterexpiration",
+      "id": "clustexpiration",
       "name": "Maximum Inactive Cluster Duration",
       "description": "Number of days of inactivity after which a cluster is considered 'closed'. That is, if no new location has been added to a given cluster for this duration, no further locations will be allocated to that cluster.",
       "defaultValue": 14,
