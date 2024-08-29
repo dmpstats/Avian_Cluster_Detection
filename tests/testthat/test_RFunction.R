@@ -105,7 +105,7 @@ test_that("input validation is doing it's job", {
 
 test_that("output is a valid move2 object", {
   actual <- rFunction(data = test_sets$wcs |> dplyr::slice(1:100))
-  # passses {move2} check
+  # passes {move2} check
   expect_true(move2::mt_is_move2(actual))
   # check if 1st class is "move2"
   expect_true(class(actual)[1] == "move2")

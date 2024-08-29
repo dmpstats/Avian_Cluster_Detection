@@ -16,11 +16,10 @@ app_key <- get_app_key()
  
 # Read (encrypted) input datasets for testing
 test_dt <- httr2::secret_read_rds("data/raw/vult_test_data.rds", key = I(app_key))
+#map(test_dt, nrow)
 
 
 set_interactive_app_testing()
-
-
 
 
 
@@ -480,6 +479,15 @@ out_dt_sa_vfa |>
   print(n = 20)
 
 
+
+#' - savanha
+out_dt_savah <- rFunction(
+  data = test_dt$savahn,
+  clusterstep = 3L, 
+  clusterwindow = 10L, 
+  clustexpiration = 14L, 
+  behavsystem = TRUE, 
+  clustercode = "savah")
 
 
 

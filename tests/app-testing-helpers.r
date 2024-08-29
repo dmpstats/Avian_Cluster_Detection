@@ -60,16 +60,18 @@ run_sdk <- function(data,
   dflt_dt <- readRDS(source_file)
 
   # set configuration to specified inputs
-  new_app_config <- dflt_app_config
-  new_app_config$clusterstart <- clusterstart
-  new_app_config$clusterend <- clusterend
-  new_app_config$clusterstep <- clusterstep
-  new_app_config$clusterwindow <- clusterwindow
-  new_app_config$clustexpiration <- clustexpiration
-  new_app_config$behavsystem <- behavsystem
-  new_app_config$d <- d
-  new_app_config$match_thresh <- match_thresh
-  new_app_config$clustercode <- clustercode
+  new_app_config <- list(
+    clusterstart = clusterstart,
+    clusterend = clusterend,
+    clusterstep = clusterstep,
+    clusterwindow = clusterwindow,
+    clustexpiration = clustexpiration,
+    behavsystem = behavsystem,
+    d = d,
+    match_thresh = match_thresh,
+    clustercode = clustercode
+  )
+  
   
 
   # overwrite config file with current inputs
