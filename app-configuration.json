@@ -1,10 +1,11 @@
 {
-  "clusterstart": "2024-03-02 23:00:00",
+  "clusterstart": null,
+  "clusterend": null,
   "clusterstep": 1,
-  "clusterwindow": 8,
+  "clusterwindow": 7,
   "clustexpiration": 14,
   "behavsystem": true,
   "clustercode": "A",
   "d": 500,
-  "match_thresh": 175
+  "match_thresh": 100
 }

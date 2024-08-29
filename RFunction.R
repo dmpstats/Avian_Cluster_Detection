@@ -148,7 +148,10 @@ rFunction <- function(data,
   }
   
   
-  logger.info(paste0("Proceeding to clustering between ", clusterstart, " and ", clusterend))
+  logger.info(paste0(
+    "Proceeding to clustering between ", clusterstart, " and ", clusterend, 
+    ", for a total of ", nrow(data), " locations from ", mt_n_tracks(data),  
+    " tracks."))
   
   # Subset main data to period chosen for clustering
   eventdata <- data %>% filter(between(mt_time(data), clusterstart, clusterend))
@@ -521,11 +524,13 @@ rFunction <- function(data,
       #' below
     }
     
+    #browser()
+    
     # Add cluster data into main location data:
     data %<>%
       filter(index %!in% xytagdata$index) %>% # remove rows whose clusters need to be updated
-      bind_rows(., xytagdata) %>%
-      #mt_stack(., xytagdata, .track_combine = "merge") %>% # add them back in with the new update
+      #bind_rows(., xytagdata) %>%
+      mt_stack(., xytagdata, .track_combine = "merge") %>% # add them back in with the new update
       arrange(mt_track_id(.), mt_time(.)) # reorder
 
     
